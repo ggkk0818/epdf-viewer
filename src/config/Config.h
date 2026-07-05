@@ -22,8 +22,8 @@ constexpr int8_t I2C_SDA = 9;
 constexpr int8_t I2C_SCL = 10;
 
 constexpr int8_t BUTTON_BOOT   = 0;
-constexpr int8_t BUTTON_CUSTOM = 4;
-constexpr int8_t BUTTON_CUSTOM2 = 5;
+constexpr int8_t BUTTON_CUSTOM = 41;
+constexpr int8_t BUTTON_CUSTOM2 = 42;
 
 } // namespace pin
 

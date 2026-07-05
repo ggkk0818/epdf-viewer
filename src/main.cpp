@@ -42,7 +42,8 @@ static void batteryTask(void* arg) {
 
 void setup() {
     Serial.begin(115200);
-    delay(200);
+    Serial.setDebugOutput(true); // 把 ESP_LOGx/log_x 输出到 Serial
+    delay(8000);
     log_i("=== EPDF Viewer boot ===");
 
     if (!psramFound()) {
