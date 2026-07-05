@@ -20,9 +20,8 @@ bool DisplayModule::begin() {
             cfg::pin::EPD_RST,
             cfg::pin::EPD_BUSY));
     SPI.begin(cfg::pin::EPD_SCK, -1, cfg::pin::EPD_MOSI, cfg::pin::EPD_CS);
-    // display_->init(cfg::display::SPI_HZ, true, 50, false);
-    display_->init(cfg::display::SPI_HZ, true, 50, false, SPI, SPISettings(4000000, MSBFIRST, SPI_MODE0));
-    display_->setRotation(0);
+    display_->init(cfg::display::SPI_HZ, true, 50, false);
+    display_->setRotation(1);
     display_->setTextColor(GxEPD_BLACK);
 
     u8g2_.begin(*display_);

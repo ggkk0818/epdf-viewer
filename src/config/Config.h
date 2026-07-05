@@ -38,8 +38,8 @@ constexpr const char* PAGE_SUFFIX  = ".bin";
 
 namespace display {
 
-constexpr uint16_t WIDTH        = 400;
-constexpr uint16_t HEIGHT       = 300;
+constexpr uint16_t WIDTH        = 300;
+constexpr uint16_t HEIGHT       = 400;
 constexpr uint16_t STATUS_H     = 20;
 constexpr uint16_t CONTENT_Y    = STATUS_H;
 constexpr uint16_t CONTENT_H    = HEIGHT - STATUS_H;
