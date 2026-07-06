@@ -29,6 +29,7 @@ public:
     bool start();
     void pushPage(ui::Page* p);
     void popPage();
+    void renderCurrent();
     void renderCurrent(modules::RefreshMode mode);
 
     modules::DisplayModule& display() { return *dm_; }
@@ -51,6 +52,7 @@ private:
     modules::PdfStore*      pdf_   = nullptr;
     modules::IconStore*     icons_ = nullptr;
     ui::UiCommon*           ui_    = nullptr;
+    bool                    pageNeedsFullRefresh_ = true;
 
     PageStack stack_;
 };

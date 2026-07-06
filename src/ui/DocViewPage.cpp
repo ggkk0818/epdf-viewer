@@ -4,8 +4,15 @@
 
 namespace ui {
 
+namespace {
+
+constexpr uint16_t FULL_REFRESH_INTERVAL = 20;
+
+} // namespace
+
 void DocViewPage::onEnter(::app::AppController& app) {
     pageIdx_ = 0;
+    pageSwitchCount_ = 0;
     std::vector<modules::PdfDoc> docs;
     app.pdf().listDocs(docs);
     for (const auto& d : docs) {
@@ -26,14 +33,24 @@ void DocViewPage::onEvent(::app::InputEvent e, ::app::AppController& app) {
             if (pageIdx_ > 0) {
                 pageIdx_--;
                 loaded_ = loadPage(app, pageIdx_);
-                app.renderCurrent(modules::RefreshMode::Full);
+                pageSwitchCount_++;
+                if ((pageSwitchCount_ % FULL_REFRESH_INTERVAL) == 0) {
+                    app.renderCurrent(modules::RefreshMode::Full);
+                } else {
+                    app.renderCurrent();
+                }
             }
             break;
         case ::app::InputEvent::DownRight:
             if (pageIdx_ + 1 < pageCount_) {
                 pageIdx_++;
                 loaded_ = loadPage(app, pageIdx_);
-                app.renderCurrent(modules::RefreshMode::Full);
+                pageSwitchCount_++;
+                if ((pageSwitchCount_ % FULL_REFRESH_INTERVAL) == 0) {
+                    app.renderCurrent(modules::RefreshMode::Full);
+                } else {
+                    app.renderCurrent();
+                }
             }
             break;
         case ::app::InputEvent::Back:
@@ -55,7 +72,7 @@ void DocViewPage::render(modules::DisplayModule& dm, UiCommon& ui) {
                      GxEPD_BLACK);
     } else {
         auto& f = dm.fonts();
-        f.setFont(u8g2_font_wqy12_t_chinese3);
+        f.setFont(u8g2_font_wqy12_t_gb2312);
         f.setForegroundColor(GxEPD_BLACK);
         f.setBackgroundColor(GxEPD_WHITE);
         f.setCursor(40, cfg::display::CONTENT_Y + 40);

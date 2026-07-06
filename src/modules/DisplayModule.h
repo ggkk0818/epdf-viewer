@@ -43,7 +43,7 @@ private:
     U8G2_FOR_ADAFRUIT_GFX u8g2_;
 
     QueueHandle_t refreshQueue_  = nullptr;
-    SemaphoreHandle_t doneSem_   = nullptr;
+    SemaphoreHandle_t drawLock_  = nullptr;
     bool ready_ = false;
 };
 

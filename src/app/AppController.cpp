@@ -57,7 +57,8 @@ void AppController::run() {
 void AppController::pushPage(ui::Page* p) {
     stack_.push(p);
     p->onEnter(*this);
-    renderCurrent(modules::RefreshMode::Full);
+    pageNeedsFullRefresh_ = true;
+    renderCurrent();
 }
 
 void AppController::popPage() {
@@ -69,8 +70,14 @@ void AppController::popPage() {
     ui::Page* top = stack_.top();
     if (top) {
         top->onEnter(*this);
-        renderCurrent(modules::RefreshMode::Full);
+        pageNeedsFullRefresh_ = true;
+        renderCurrent();
     }
+}
+
+void AppController::renderCurrent() {
+    renderCurrent(pageNeedsFullRefresh_ ? modules::RefreshMode::Full
+                                        : modules::RefreshMode::Partial);
 }
 
 void AppController::renderCurrent(modules::RefreshMode mode) {
@@ -79,6 +86,7 @@ void AppController::renderCurrent(modules::RefreshMode mode) {
     dm_->startDraw();
     top->render(*dm_, *ui_);
     dm_->endDraw(mode);
+    pageNeedsFullRefresh_ = false;
 }
 
 } // namespace app

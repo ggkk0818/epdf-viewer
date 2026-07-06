@@ -39,7 +39,7 @@ void UiCommon::drawStatusBar(bool showPage, uint16_t pageCur, uint16_t pageTotal
     g.fillRect(0, 0, CONTENT_W, cfg::display::STATUS_H, COLOR_FG);
     g.fillRect(0, 0, CONTENT_W, cfg::display::STATUS_H - 1, COLOR_BG);
 
-    f.setFont(u8g2_font_wqy12_t_chinese3);
+    f.setFont(u8g2_font_wqy12_t_gb2312);
     f.setForegroundColor(COLOR_FG);
     f.setBackgroundColor(COLOR_BG);
 
@@ -51,12 +51,16 @@ void UiCommon::drawStatusBar(bool showPage, uint16_t pageCur, uint16_t pageTotal
     uint16_t rightX = CONTENT_W - 4;
 
     if (bat_) {
+        constexpr uint16_t BATTERY_ICON_W = 16;
+        constexpr uint16_t BATTERY_ICON_GAP = 4;
         uint8_t pct = bat_->getPercent();
         char buf[8];
         snprintf(buf, sizeof(buf), "%u%%", pct);
-        f.setCursor(rightX - 24, 14);
+        uint16_t iconX = rightX - BATTERY_ICON_W;
+        uint16_t textRight = iconX - BATTERY_ICON_GAP;
+        f.setCursor(textRight - 24, 14);
         f.print(buf);
-        drawIconAt(rightX - 4, 2, "battery", 16, 16);
+        drawIconAt(iconX, 2, "battery", 16, 16);
         rightX -= 40;
     }
 
@@ -83,7 +87,7 @@ void UiCommon::drawListRow(uint16_t y, const String& title, const String& value,
         f.setBackgroundColor(COLOR_BG);
     }
 
-    f.setFont(u8g2_font_wqy12_t_chinese3);
+    f.setFont(u8g2_font_wqy12_t_gb2312);
     f.setCursor(LIST_PAD_X, rowY + LIST_TEXT_Y_OFFSET - 4);
     f.print(title);
 
@@ -118,7 +122,7 @@ void UiCommon::drawGridItem(uint8_t col, uint8_t row, const String& label, const
 
     drawIconAt(iconX, iconY, iconName, iconSize, iconSize);
 
-    f.setFont(u8g2_font_wqy12_t_chinese3);
+    f.setFont(u8g2_font_wqy12_t_gb2312);
     f.setForegroundColor(COLOR_FG);
     f.setBackgroundColor(COLOR_BG);
     uint16_t labelW = label.length() * 12;
@@ -143,7 +147,7 @@ void UiCommon::drawSwitchRow(uint16_t y, const String& label, bool on, bool focu
         f.setBackgroundColor(COLOR_BG);
     }
 
-    f.setFont(u8g2_font_wqy12_t_chinese3);
+    f.setFont(u8g2_font_wqy12_t_gb2312);
     f.setCursor(LIST_PAD_X, rowY + LIST_TEXT_Y_OFFSET - 4);
     f.print(label);
 

@@ -17,6 +17,7 @@ private:
     String docName_;
     uint16_t pageIdx_ = 0;
     uint16_t pageCount_ = 0;
+    uint16_t pageSwitchCount_ = 0;
     uint8_t* pageBuf_ = nullptr;
     bool loaded_ = false;
 

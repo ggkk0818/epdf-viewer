@@ -12,7 +12,7 @@ void BlePage::onEvent(::app::InputEvent e, ::app::AppController& app) {
         case ::app::InputEvent::Enter:
             bleOn_ = !bleOn_;
             app.ble().setEnabled(bleOn_);
-            app.renderCurrent(modules::RefreshMode::Full);
+            app.renderCurrent();
             break;
         case ::app::InputEvent::Back:
             app.popPage();
