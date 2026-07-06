@@ -47,7 +47,7 @@ void DocListPage::render(modules::DisplayModule& dm, UiCommon& ui) {
     ui.drawStatusBar(false, 0, 0);
     if (docs_.empty()) {
         auto& f = dm.fonts();
-        f.setFont(u8g2_font_wqy12_t_chinese1);
+        f.setFont(u8g2_font_wqy12_t_chinese3);
         f.setForegroundColor(GxEPD_BLACK);
         f.setBackgroundColor(GxEPD_WHITE);
         f.setCursor(60, cfg::display::CONTENT_Y + 40);

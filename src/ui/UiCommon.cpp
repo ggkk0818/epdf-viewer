@@ -39,7 +39,7 @@ void UiCommon::drawStatusBar(bool showPage, uint16_t pageCur, uint16_t pageTotal
     g.fillRect(0, 0, CONTENT_W, cfg::display::STATUS_H, COLOR_FG);
     g.fillRect(0, 0, CONTENT_W, cfg::display::STATUS_H - 1, COLOR_BG);
 
-    f.setFont(u8g2_font_wqy12_t_chinese1);
+    f.setFont(u8g2_font_wqy12_t_chinese3);
     f.setForegroundColor(COLOR_FG);
     f.setBackgroundColor(COLOR_BG);
 
@@ -83,7 +83,7 @@ void UiCommon::drawListRow(uint16_t y, const String& title, const String& value,
         f.setBackgroundColor(COLOR_BG);
     }
 
-    f.setFont(u8g2_font_wqy12_t_chinese1);
+    f.setFont(u8g2_font_wqy12_t_chinese3);
     f.setCursor(LIST_PAD_X, rowY + LIST_TEXT_Y_OFFSET - 4);
     f.print(title);
 
@@ -118,7 +118,7 @@ void UiCommon::drawGridItem(uint8_t col, uint8_t row, const String& label, const
 
     drawIconAt(iconX, iconY, iconName, iconSize, iconSize);
 
-    f.setFont(u8g2_font_wqy12_t_chinese1);
+    f.setFont(u8g2_font_wqy12_t_chinese3);
     f.setForegroundColor(COLOR_FG);
     f.setBackgroundColor(COLOR_BG);
     uint16_t labelW = label.length() * 12;
@@ -143,7 +143,7 @@ void UiCommon::drawSwitchRow(uint16_t y, const String& label, bool on, bool focu
         f.setBackgroundColor(COLOR_BG);
     }
 
-    f.setFont(u8g2_font_wqy12_t_chinese1);
+    f.setFont(u8g2_font_wqy12_t_chinese3);
     f.setCursor(LIST_PAD_X, rowY + LIST_TEXT_Y_OFFSET - 4);
     f.print(label);
 

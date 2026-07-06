@@ -55,7 +55,7 @@ void DocViewPage::render(modules::DisplayModule& dm, UiCommon& ui) {
                      GxEPD_BLACK);
     } else {
         auto& f = dm.fonts();
-        f.setFont(u8g2_font_wqy12_t_chinese1);
+        f.setFont(u8g2_font_wqy12_t_chinese3);
         f.setForegroundColor(GxEPD_BLACK);
         f.setBackgroundColor(GxEPD_WHITE);
         f.setCursor(40, cfg::display::CONTENT_Y + 40);
