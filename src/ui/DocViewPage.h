@@ -19,6 +19,8 @@ private:
     uint16_t pageCount_ = 0;
     uint16_t pageSwitchCount_ = 0;
     uint8_t* pageBuf_ = nullptr;
+    uint16_t pageW_ = 0;
+    uint16_t pageH_ = 0;
     bool loaded_ = false;
 
     bool loadPage(::app::AppController& app, uint16_t idx);

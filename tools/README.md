@@ -47,9 +47,44 @@ python tools/svg_to_bin.py pdf
 
 - `tf/sys/icon/{doc,ble,settings}.bin`：48×48 图标
 - `tf/sys/icon/{ble_on,ble_off,battery}.bin`：16×16 状态栏图标
-- `tf/pdf/example/001.bin`：400×300 测试页
+- `tf/pdf/example/001.bin`：300×380 测试页（与设备视口一致）
 
-图标格式：4 字节文件头（width u16 LE, height u16 LE）+ 1bpp MSB-first 行序位图数据。
-PDF 格式：无文件头，直接 1bpp MSB-first 行序位图（15000 字节）。
+## 文件格式
+
+位图位序约定（所有格式通用）：**1bpp，MSB-first，行序**；bit=1 表示黑色像素（`GxEPD_BLACK`），bit=0 表示白色。
+
+### 图标格式（4 字节文件头）
+
+```
+偏移  长度  字段
+0     u16   width  (LE)
+2     u16   height (LE)
+4     ...   1bpp MSB-first row-major bitmap
+```
+
+### PDF 页格式（8 字节文件头）
+
+```
+偏移  长度  字段
+0     u8    magic     = 0xE5
+1     u8    version   = 0x01
+2     u16   width     (LE)
+4     u16   height    (LE)
+6     u16   reserved  = 0（留作未来扩展）
+8     ...   1bpp MSB-first row-major bitmap
+```
+
+设备端读取（`src/modules/PdfStore.cpp`）流程：
+
+1. 读取 8 字节文件头，校验 magic=0xE5 / version=0x01。
+2. 取出 `width × height` 作为页面位图尺寸。
+3. 与设备视口 `cfg::display::CONTENT_W × CONTENT_H`（300×380）比较：
+   - 页面 ≥ 视口：**裁剪左上角**，逐行从 SD 读取仅覆盖视口的字节范围，多余部分不读取也不渲染。
+   - 页面 < 视口：**居中显示**，按页面尺寸读取完整内容，余白填白。
+4. 视口缓冲区填好后，由 `DocViewPage::render` 直接 `drawBitmap` 一次渲染。
+
+页宽上限 ≈ 2048 像素（`MAX_PAGE_ROW_BYTES = 256`），超过会被拒绝。
+
+> ⚠️ 新格式不再兼容历史的无文件头 PDF bin。如果你仍持有旧版的 `001.bin`（15000 字节、400×300、无文件头），请用新版脚本重新生成。
 
 把整个 `tf/` 目录的目录结构原样拷贝到 TF 卡根目录即可。

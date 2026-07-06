@@ -3,10 +3,15 @@
 SVG to 1bpp .bin converter for EPDF viewer.
 
 Output formats:
-- Icons:   [width u16 LE][height u16 LE][1bpp MSB-first row-major bitmap]
-- PDF page: raw 1bpp MSB-first row-major (400x300, 15000 bytes; no header)
+- Icons:    [width u16 LE][height u16 LE][1bpp MSB-first row-major bitmap]
+- PDF page: [magic u8=0xE5][version u8=0x01][width u16 LE][height u16 LE]
+            [reserved u16 LE=0][1bpp MSB-first row-major bitmap]
 
 Bit semantics: bit=1 means black pixel (drawn with GxEPD_BLACK), bit=0 means white.
+
+The on-device loader reads the PDF page header, then renders only the viewport
+(300x380, top-left of the page). Pages larger than the viewport are top-left
+cropped; pages smaller are centered with white padding.
 
 Usage:
     python tools/svg_to_bin.py icons        # batch-convert all icons
@@ -36,7 +41,13 @@ ICON_SPECS = [
     ("battery (1).svg",   "battery",  16),
 ]
 
-PDF_W, PDF_H = 400, 300
+# Must match cfg::display::CONTENT_W / CONTENT_H in src/config/Config.h.
+# Pages of any size load fine on-device (large=crop TL, small=center), but the
+# demo defaults to the viewport size so the test page renders full-bleed.
+PDF_W, PDF_H = 300, 380
+
+PDF_MAGIC = 0xE5
+PDF_VERSION = 0x01
 
 
 def render_svg_to_rgba(svg_path: Path, size: int) -> Image.Image:
@@ -117,9 +128,11 @@ def write_pdf_page(out_path: Path) -> None:
                     byte |= (0x80 >> bit)
             out[row_base + xb] = byte
 
+    header = struct.pack("<BBHHH", PDF_MAGIC, PDF_VERSION, PDF_W, PDF_H, 0)
     with open(out_path, "wb") as f:
+        f.write(header)
         f.write(bytes(out))
-    print(f"  {out_path.name:20s} {PDF_W}x{PDF_H}  {len(out)} bytes (no header)")
+    print(f"  {out_path.name:20s} {PDF_W}x{PDF_H}  {len(header) + len(out)} bytes (8B header + {len(out)} bitmap)")
 
 
 def gen_icons() -> None:

@@ -43,6 +43,7 @@ constexpr uint16_t HEIGHT       = 400;
 constexpr uint16_t STATUS_H     = 20;
 constexpr uint16_t CONTENT_Y    = STATUS_H;
 constexpr uint16_t CONTENT_H    = HEIGHT - STATUS_H;
+constexpr uint16_t CONTENT_W    = WIDTH;
 
 constexpr uint16_t ICON_SIZE    = 48;
 constexpr uint16_t GRID_COLS    = 2;

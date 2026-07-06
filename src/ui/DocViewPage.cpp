@@ -22,7 +22,7 @@ void DocViewPage::onEnter(::app::AppController& app) {
         }
     }
     if (pageBuf_ == nullptr) {
-        pageBuf_ = (uint8_t*)heap_caps_malloc(modules::PdfStore::PAGE_BYTES, MALLOC_CAP_SPIRAM);
+        pageBuf_ = (uint8_t*)heap_caps_malloc(modules::PdfStore::VIEWPORT_BYTES, MALLOC_CAP_SPIRAM);
     }
     loaded_ = loadPage(app, pageIdx_);
 }
@@ -67,8 +67,8 @@ void DocViewPage::render(modules::DisplayModule& dm, UiCommon& ui) {
         g.drawBitmap(0,
                      cfg::display::CONTENT_Y,
                      pageBuf_,
-                     cfg::display::WIDTH,
-                     cfg::display::HEIGHT,
+                     modules::PdfStore::VIEWPORT_W,
+                     modules::PdfStore::VIEWPORT_H,
                      GxEPD_BLACK);
     } else {
         auto& f = dm.fonts();
@@ -82,7 +82,9 @@ void DocViewPage::render(modules::DisplayModule& dm, UiCommon& ui) {
 
 bool DocViewPage::loadPage(::app::AppController& app, uint16_t idx) {
     if (!pageBuf_) return false;
-    return app.pdf().readPage(docName_, idx, pageBuf_, modules::PdfStore::PAGE_BYTES);
+    return app.pdf().readPageViewport(docName_, idx,
+                                      pageBuf_, modules::PdfStore::VIEWPORT_BYTES,
+                                      pageW_, pageH_);
 }
 
 } // namespace ui
