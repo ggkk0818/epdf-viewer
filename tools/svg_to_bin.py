@@ -39,6 +39,8 @@ ICON_SPECS = [
     ("bluetooth_on.svg",  "ble_on",   16),
     ("bluetooth_off.svg", "ble_off",  16),
     ("battery (1).svg",   "battery",  16),
+    ("charging.svg",      "charging", 16),
+    ("power.svg",         "power",    16),
 ]
 
 # Must match cfg::display::CONTENT_W / CONTENT_H in src/config/Config.h.

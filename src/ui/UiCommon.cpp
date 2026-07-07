@@ -51,17 +51,35 @@ void UiCommon::drawStatusBar(bool showPage, uint16_t pageCur, uint16_t pageTotal
     uint16_t rightX = CONTENT_W - 4;
 
     if (bat_) {
-        constexpr uint16_t BATTERY_ICON_W = 16;
-        constexpr uint16_t BATTERY_ICON_GAP = 4;
+        constexpr uint16_t ICON_W = 16;
+        constexpr uint16_t ICON_GAP = 4;
+        constexpr uint16_t TEXT_ICON_GAP = 4;
+
+        uint16_t batteryIconX = rightX - ICON_W;
+        drawIconAt(batteryIconX, 2, "battery", 16, 16);
+
+        uint16_t nextRightEdge = batteryIconX;
+
+        const char* stateIconName = nullptr;
+        switch (bat_->getPowerState()) {
+            case modules::PowerState::Charging: stateIconName = "charging"; break;
+            case modules::PowerState::Full:     stateIconName = "power";    break;
+            default: break;
+        }
+        if (stateIconName) {
+            uint16_t stateIconX = nextRightEdge - ICON_GAP - ICON_W;
+            drawIconAt(stateIconX, 2, stateIconName, 16, 16);
+            nextRightEdge = stateIconX;
+        }
+
         uint8_t pct = bat_->getPercent();
         char buf[8];
         snprintf(buf, sizeof(buf), "%u%%", pct);
-        uint16_t iconX = rightX - BATTERY_ICON_W;
-        uint16_t textRight = iconX - BATTERY_ICON_GAP;
-        f.setCursor(textRight - 24, 14);
+        uint16_t textW = f.getUTF8Width(buf);
+        f.setCursor(nextRightEdge - TEXT_ICON_GAP - textW, 14);
         f.print(buf);
-        drawIconAt(iconX, 2, "battery", 16, 16);
-        rightX -= 40;
+
+        rightX = batteryIconX - 40;
     }
 
     if (ble_) {
@@ -115,18 +133,26 @@ void UiCommon::drawGridItem(uint8_t col, uint8_t row, const String& label, const
     uint16_t iconX = cellX + (cellW - iconSize) / 2;
     uint16_t iconY = cellY + cfg::display::GRID_PAD;
 
+    f.setFont(u8g2_font_wqy12_t_gb2312);
+    f.setForegroundColor(COLOR_FG);
+    f.setBackgroundColor(COLOR_BG);
+    uint16_t labelW = f.getUTF8Width(label.c_str());
+    uint16_t labelBaselineY = iconY + iconSize + 16;
+
     if (focused) {
-        g.drawRect(iconX - 2, iconY - 2, iconSize + 4, iconSize + 4, COLOR_FG);
-        g.drawRect(iconX - 4, iconY - 4, iconSize + 8, iconSize + 8, COLOR_FG);
+        constexpr uint16_t PAD = 8;
+        constexpr uint16_t RADIUS = 8;
+        uint16_t innerW = (labelW > iconSize) ? labelW : iconSize;
+        uint16_t boxW = innerW + PAD * 2;
+        uint16_t boxH = (iconSize + 16 + 12) + PAD * 2;
+        uint16_t boxX = cellX + (cellW - boxW) / 2;
+        uint16_t boxY = iconY - PAD;
+        g.drawRoundRect(boxX, boxY, boxW, boxH, RADIUS, COLOR_FG);
     }
 
     drawIconAt(iconX, iconY, iconName, iconSize, iconSize);
 
-    f.setFont(u8g2_font_wqy12_t_gb2312);
-    f.setForegroundColor(COLOR_FG);
-    f.setBackgroundColor(COLOR_BG);
-    uint16_t labelW = label.length() * 12;
-    f.setCursor(cellX + (cellW - labelW) / 2, iconY + iconSize + 16);
+    f.setCursor(cellX + (cellW - labelW) / 2, labelBaselineY);
     f.print(label);
 }
 
