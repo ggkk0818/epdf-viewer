@@ -3,26 +3,6 @@
 
 namespace modules {
 
-namespace {
-
-constexpr UBaseType_t REFRESH_QUEUE_LEN = 4;
-
-struct RefreshRequest {
-    RefreshMode mode;
-    Rect rect;
-};
-
-Rect fullScreenRect() {
-    Rect rect;
-    rect.x = 0;
-    rect.y = 0;
-    rect.w = cfg::display::WIDTH;
-    rect.h = cfg::display::HEIGHT;
-    return rect;
-}
-
-} // namespace
-
 bool DisplayModule::begin() {
     display_ = new EpdPanel(
         GxEPD2_420_GDEY042T81(
@@ -39,10 +19,9 @@ bool DisplayModule::begin() {
     u8g2_.setForegroundColor(GxEPD_BLACK);
     u8g2_.setBackgroundColor(GxEPD_WHITE);
 
-    refreshQueue_ = xQueueCreate(REFRESH_QUEUE_LEN, sizeof(RefreshRequest));
-    drawLock_ = xSemaphoreCreateMutex();
-    if (!refreshQueue_ || !drawLock_) {
-        log_e("display queue/lock create failed");
+    stateLock_ = xSemaphoreCreateMutex();
+    if (!stateLock_) {
+        log_e("stateLock create failed");
         return false;
     }
 
@@ -52,7 +31,7 @@ bool DisplayModule::begin() {
         cfg::task::DISPLAY_STACK,
         this,
         cfg::task::DISPLAY_PRIO,
-        nullptr,
+        &task_,
         cfg::task::DISPLAY_CORE);
     if (ok != pdPASS) {
         log_e("displayTask create failed");
@@ -64,32 +43,17 @@ bool DisplayModule::begin() {
     return true;
 }
 
-void DisplayModule::startDraw() {
-    xSemaphoreTake(drawLock_, portMAX_DELAY);
-    display_->setFullWindow();
-    display_->fillScreen(GxEPD_WHITE);
-}
-
-void DisplayModule::endDraw(RefreshMode mode, const Rect* rect) {
-    RefreshRequest req;
-    req.mode = mode;
-    if (rect && mode == RefreshMode::Partial) {
-        req.rect = *rect;
-    } else {
-        req.rect = fullScreenRect();
+void DisplayModule::requestRender(RefreshMode mode) {
+    portENTER_CRITICAL(&spinlock_);
+    if ((uint8_t)mode > (uint8_t)pendingMode_) {
+        pendingMode_ = mode;
     }
+    pending_ = true;
+    portEXIT_CRITICAL(&spinlock_);
 
-    RefreshRequest dropped;
-    while (xQueueSend(refreshQueue_, &req, 0) != pdPASS) {
-        if (xQueueReceive(refreshQueue_, &dropped, 0) != pdPASS) {
-            continue;
-        }
-        if (dropped.mode == RefreshMode::Full) {
-            req.mode = RefreshMode::Full;
-            req.rect = fullScreenRect();
-        }
+    if (task_) {
+        xTaskNotifyGive(task_);
     }
-    xSemaphoreGive(drawLock_);
 }
 
 void DisplayModule::displayTaskTrampoline(void* arg) {
@@ -97,32 +61,53 @@ void DisplayModule::displayTaskTrampoline(void* arg) {
 }
 
 void DisplayModule::displayLoop() {
-    RefreshRequest req;
-    RefreshRequest newer;
     while (true) {
-        if (xQueueReceive(refreshQueue_, &req, portMAX_DELAY) != pdPASS) {
-            continue;
-        }
+        // Block until at least one render request arrives. The take resets
+        // the notification count to zero, coalescing any number of wakes
+        // into a single render pass.
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        xSemaphoreTake(drawLock_, portMAX_DELAY);
-        bool mustUseFullRefresh = (req.mode == RefreshMode::Full);
-        while (xQueueReceive(refreshQueue_, &newer, 0) == pdPASS) {
-            if (newer.mode == RefreshMode::Full) {
-                mustUseFullRefresh = true;
+        while (true) {
+            // Snapshot the coalesced mode and clear pending under a brief
+            // critical section.
+            RefreshMode mode;
+            portENTER_CRITICAL(&spinlock_);
+            mode         = pendingMode_;
+            pending_     = false;
+            pendingMode_ = RefreshMode::Partial;
+            portEXIT_CRITICAL(&spinlock_);
+
+            // Hold the state lock only during the draw phase — this is the
+            // only window where page state is read. The e-ink refresh below
+            // runs unlocked, so AppController can keep mutating state and
+            // firing notifications during the (slow) refresh.
+            xSemaphoreTake(stateLock_, portMAX_DELAY);
+            display_->setFullWindow();
+            display_->fillScreen(GxEPD_WHITE);
+            if (drawCb_) {
+                drawCb_(drawCtx_);
             }
-            req = newer;
-        }
-        if (mustUseFullRefresh) {
-            req.mode = RefreshMode::Full;
-            req.rect = fullScreenRect();
-        }
+            xSemaphoreGive(stateLock_);
 
-        if (req.mode == RefreshMode::Full) {
-            display_->display(false);
-        } else {
-            display_->displayWindow(req.rect.x, req.rect.y, req.rect.w, req.rect.h);
+            // Drive the panel. GxEPD2's display()/displayWindow() block on
+            // the BUSY pin, so the next iteration's draw can't start until
+            // the refresh finishes — no buffer tearing risk.
+            if (mode == RefreshMode::Full) {
+                display_->display(false);
+            } else {
+                display_->displayWindow(0, 0,
+                                        cfg::display::WIDTH,
+                                        cfg::display::HEIGHT);
+            }
+
+            // If another request arrived during this pass, loop and render
+            // the latest state. Otherwise wait for the next notification.
+            bool more;
+            portENTER_CRITICAL(&spinlock_);
+            more = pending_;
+            portEXIT_CRITICAL(&spinlock_);
+            if (!more) break;
         }
-        xSemaphoreGive(drawLock_);
     }
 }
 

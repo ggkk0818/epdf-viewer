@@ -40,7 +40,7 @@ void DocListPage::onEvent(::app::InputEvent e, ::app::AppController& app) {
             break;
         default: break;
     }
-    if (changed) app.renderCurrent();
+    if (changed) app.requestRender();
 }
 
 void DocListPage::render(modules::DisplayModule& dm, UiCommon& ui) {

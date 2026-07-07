@@ -11,14 +11,16 @@ void AppController::begin(modules::DisplayModule* dm,
                           modules::PdfStore* pdf,
                           modules::IconStore* icons,
                           ui::UiCommon* ui) {
-    dm_ = dm;
-    in_ = in;
-    bat_ = bat;
-    ble_ = ble;
-    sd_ = sd;
-    pdf_ = pdf;
+    dm_    = dm;
+    in_    = in;
+    bat_   = bat;
+    ble_   = ble;
+    sd_    = sd;
+    pdf_   = pdf;
     icons_ = icons;
-    ui_ = ui;
+    ui_    = ui;
+
+    dm_->setDrawCallback(&AppController::drawPageTrampoline, this);
 }
 
 bool AppController::start() {
@@ -41,6 +43,17 @@ void AppController::taskTrampoline(void* arg) {
     static_cast<AppController*>(arg)->run();
 }
 
+void AppController::drawPageTrampoline(void* ctx) {
+    static_cast<AppController*>(ctx)->drawTopPage();
+}
+
+void AppController::drawTopPage() {
+    ui::Page* top = stack_.top();
+    if (top) {
+        top->render(*dm_, *ui_);
+    }
+}
+
 void AppController::run() {
     InputEvent e;
     while (true) {
@@ -55,38 +68,30 @@ void AppController::run() {
 }
 
 void AppController::pushPage(ui::Page* p) {
+    // Brief lock: just the stack push so a concurrent draw always sees a
+    // valid top page. onEnter runs unlocked (it may do slow SD reads).
+    dm_->lockState();
     stack_.push(p);
+    dm_->unlockState();
+
     p->onEnter(*this);
-    pageNeedsFullRefresh_ = true;
-    renderCurrent();
+    requestRender(modules::RefreshMode::Full);
 }
 
 void AppController::popPage() {
+    dm_->lockState();
     ui::Page* p = stack_.pop();
     if (p) {
         p->onExit(*this);
         delete p;
     }
     ui::Page* top = stack_.top();
+    dm_->unlockState();
+
     if (top) {
         top->onEnter(*this);
-        pageNeedsFullRefresh_ = true;
-        renderCurrent();
+        requestRender(modules::RefreshMode::Full);
     }
-}
-
-void AppController::renderCurrent() {
-    renderCurrent(pageNeedsFullRefresh_ ? modules::RefreshMode::Full
-                                        : modules::RefreshMode::Partial);
-}
-
-void AppController::renderCurrent(modules::RefreshMode mode) {
-    ui::Page* top = stack_.top();
-    if (!top) return;
-    dm_->startDraw();
-    top->render(*dm_, *ui_);
-    dm_->endDraw(mode);
-    pageNeedsFullRefresh_ = false;
 }
 
 } // namespace app

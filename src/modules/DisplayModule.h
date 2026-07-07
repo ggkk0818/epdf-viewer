@@ -5,20 +5,13 @@
 #include <gdey/GxEPD2_420_GDEY042T81.h>
 #include <U8g2_for_Adafruit_GFX.h>
 #include <freertos/semphr.h>
-#include <freertos/queue.h>
+#include <freertos/task.h>
 
 namespace modules {
 
 enum class RefreshMode : uint8_t {
-    Full,
-    Partial,
-};
-
-struct Rect {
-    uint16_t x = 0;
-    uint16_t y = 0;
-    uint16_t w = 0;
-    uint16_t h = 0;
+    Partial = 0,
+    Full    = 1,
 };
 
 using EpdPanel =
@@ -26,25 +19,51 @@ using EpdPanel =
 
 class DisplayModule {
 public:
+    using DrawCallback = void (*)(void* ctx);
+
     bool begin();
-    void startDraw();
-    void endDraw(RefreshMode mode, const Rect* rect = nullptr);
 
-    EpdPanel& gfx() { return *display_; }
-    U8G2_FOR_ADAFRUIT_GFX& fonts() { return u8g2_; }
+    // Non-blocking render request. Coalesces: if multiple requests arrive
+    // before the previous render completes, only the latest state is drawn.
+    // If any intermediate request asked for Full, the next render is Full.
+    void requestRender(RefreshMode mode);
 
-    bool isReady() const { return ready_; }
+    // Register the callback that draws the current page into the GxEPD2
+    // buffer. Called on the DisplayModule task with the state lock held.
+    void setDrawCallback(DrawCallback cb, void* ctx) {
+        drawCb_   = cb;
+        drawCtx_  = ctx;
+    }
+
+    // State lock. Held briefly by AppController during page-state mutation,
+    // held by DisplayModule during the draw phase only (not the e-ink
+    // refresh phase, so AppController can keep firing notifications).
+    void lockState()   { xSemaphoreTake(stateLock_, portMAX_DELAY); }
+    void unlockState() { xSemaphoreGive(stateLock_); }
+
+    EpdPanel& gfx()                  { return *display_; }
+    U8G2_FOR_ADAFRUIT_GFX& fonts()  { return u8g2_; }
+    bool isReady() const             { return ready_; }
 
 private:
     static void displayTaskTrampoline(void* arg);
     void displayLoop();
 
-    EpdPanel* display_ = nullptr;
-    U8G2_FOR_ADAFRUIT_GFX u8g2_;
+    EpdPanel*               display_ = nullptr;
+    U8G2_FOR_ADAFRUIT_GFX   u8g2_;
 
-    QueueHandle_t refreshQueue_  = nullptr;
-    SemaphoreHandle_t drawLock_  = nullptr;
-    bool ready_ = false;
+    DrawCallback            drawCb_  = nullptr;
+    void*                   drawCtx_ = nullptr;
+
+    SemaphoreHandle_t       stateLock_ = nullptr;
+    TaskHandle_t            task_      = nullptr;
+    portMUX_TYPE            spinlock_  = portMUX_INITIALIZER_UNLOCKED;
+
+    // Concurrent state, protected by spinlock_.
+    volatile RefreshMode    pendingMode_ = RefreshMode::Partial;
+    volatile bool           pending_     = false;
+
+    bool                    ready_ = false;
 };
 
 } // namespace modules

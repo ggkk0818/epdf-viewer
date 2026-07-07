@@ -23,6 +23,7 @@ private:
     uint16_t pageH_ = 0;
     bool loaded_ = false;
 
+    void switchToPage(::app::AppController& app, uint16_t newIdx);
     bool loadPage(::app::AppController& app, uint16_t idx);
 };
 

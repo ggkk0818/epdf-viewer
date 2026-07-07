@@ -31,26 +31,12 @@ void DocViewPage::onEvent(::app::InputEvent e, ::app::AppController& app) {
     switch (e) {
         case ::app::InputEvent::UpLeft:
             if (pageIdx_ > 0) {
-                pageIdx_--;
-                loaded_ = loadPage(app, pageIdx_);
-                pageSwitchCount_++;
-                if ((pageSwitchCount_ % FULL_REFRESH_INTERVAL) == 0) {
-                    app.renderCurrent(modules::RefreshMode::Full);
-                } else {
-                    app.renderCurrent();
-                }
+                switchToPage(app, pageIdx_ - 1);
             }
             break;
         case ::app::InputEvent::DownRight:
             if (pageIdx_ + 1 < pageCount_) {
-                pageIdx_++;
-                loaded_ = loadPage(app, pageIdx_);
-                pageSwitchCount_++;
-                if ((pageSwitchCount_ % FULL_REFRESH_INTERVAL) == 0) {
-                    app.renderCurrent(modules::RefreshMode::Full);
-                } else {
-                    app.renderCurrent();
-                }
+                switchToPage(app, pageIdx_ + 1);
             }
             break;
         case ::app::InputEvent::Back:
@@ -78,6 +64,29 @@ void DocViewPage::render(modules::DisplayModule& dm, UiCommon& ui) {
         f.setCursor(40, cfg::display::CONTENT_Y + 40);
         f.print("无法读取该页");
     }
+}
+
+void DocViewPage::switchToPage(::app::AppController& app, uint16_t newIdx) {
+    // Mark the page as not-loaded under the state lock so a concurrent
+    // render won't read pageBuf_ while we overwrite it via SD read.
+    app.display().lockState();
+    pageIdx_ = newIdx;
+    loaded_  = false;
+    app.display().unlockState();
+
+    // SD read runs unlocked — DisplayModule can keep refreshing the
+    // previous frame or the "无法读取该页" placeholder during this time.
+    bool ok = loadPage(app, newIdx);
+
+    uint16_t newCount;
+    app.display().lockState();
+    loaded_      = ok;
+    newCount     = ++pageSwitchCount_;
+    app.display().unlockState();
+
+    app.requestRender(((newCount % FULL_REFRESH_INTERVAL) == 0)
+                          ? modules::RefreshMode::Full
+                          : modules::RefreshMode::Partial);
 }
 
 bool DocViewPage::loadPage(::app::AppController& app, uint16_t idx) {

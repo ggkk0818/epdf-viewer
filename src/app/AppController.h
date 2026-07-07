@@ -29,8 +29,11 @@ public:
     bool start();
     void pushPage(ui::Page* p);
     void popPage();
-    void renderCurrent();
-    void renderCurrent(modules::RefreshMode mode);
+
+    // Non-blocking render request. Multiple calls coalesce into a single
+    // render of the latest page state.
+    void requestRender() { requestRender(modules::RefreshMode::Partial); }
+    void requestRender(modules::RefreshMode mode) { dm_->requestRender(mode); }
 
     modules::DisplayModule& display() { return *dm_; }
     modules::BatteryModule& battery() { return *bat_; }
@@ -42,7 +45,9 @@ public:
 
 private:
     static void taskTrampoline(void* arg);
+    static void drawPageTrampoline(void* ctx);
     void run();
+    void drawTopPage();
 
     modules::DisplayModule* dm_    = nullptr;
     modules::InputModule*   in_    = nullptr;
@@ -52,7 +57,6 @@ private:
     modules::PdfStore*      pdf_   = nullptr;
     modules::IconStore*     icons_ = nullptr;
     ui::UiCommon*           ui_    = nullptr;
-    bool                    pageNeedsFullRefresh_ = true;
 
     PageStack stack_;
 };
