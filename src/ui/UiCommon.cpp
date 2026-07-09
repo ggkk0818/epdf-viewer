@@ -48,12 +48,12 @@ void UiCommon::drawStatusBar(bool showPage, uint16_t pageCur, uint16_t pageTotal
         f.printf("%u/%u", (unsigned)pageCur, (unsigned)pageTotal);
     }
 
-    uint16_t rightX = CONTENT_W - 4;
+    constexpr uint16_t TEXT_ICON_GAP = 4;
+    uint16_t rightX = CONTENT_W - TEXT_ICON_GAP;
 
     if (bat_) {
         constexpr uint16_t ICON_W = 16;
         constexpr uint16_t ICON_GAP = 4;
-        constexpr uint16_t TEXT_ICON_GAP = 4;
 
         uint16_t batteryIconX = rightX - ICON_W;
         drawIconAt(batteryIconX, 2, "battery", 16, 16);
@@ -76,15 +76,15 @@ void UiCommon::drawStatusBar(bool showPage, uint16_t pageCur, uint16_t pageTotal
         char buf[8];
         snprintf(buf, sizeof(buf), "%u%%", pct);
         uint16_t textW = f.getUTF8Width(buf);
-        f.setCursor(nextRightEdge - TEXT_ICON_GAP - textW, 14);
+        uint16_t pctX = nextRightEdge - TEXT_ICON_GAP - textW;
+        f.setCursor(pctX, 14);
         f.print(buf);
 
-        rightX = batteryIconX - 40;
+        rightX = pctX;
     }
 
-    if (ble_) {
-        const char* iconName = ble_->isEnabled() ? "ble_on" : "ble_off";
-        drawIconAt(rightX - 16, 2, iconName, 16, 16);
+    if (ble_ && ble_->isEnabled()) {
+        drawIconAt(rightX - TEXT_ICON_GAP - 16, 2, "ble_on", 16, 16);
     }
 }
 
