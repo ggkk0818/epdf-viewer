@@ -11,13 +11,22 @@ bool DisplayModule::begin() {
             cfg::pin::EPD_RST,
             cfg::pin::EPD_BUSY));
     SPI.begin(cfg::pin::EPD_SCK, -1, cfg::pin::EPD_MOSI, cfg::pin::EPD_CS);
-    display_->init(cfg::display::SPI_HZ, true, 50, false);
+    // init() 1st arg is serial_diag_bitrate (NOT SPI speed). Pass 0 so GxEPD2
+    // does not re-init Serial at a different baud.
+    display_->init(0, true, 50, false);
     display_->setRotation(1);
     display_->setTextColor(GxEPD_BLACK);
 
     u8g2_.begin(*display_);
     u8g2_.setForegroundColor(GxEPD_BLACK);
     u8g2_.setBackgroundColor(GxEPD_WHITE);
+
+    // Prime the panel: the first user-visible render can come up blank on a
+    // cold-boot SSD1683 because its RAM and LUT state are undefined until a
+    // full clear+refresh has run once. Do that synchronously here, before the
+    // display task starts, so the first requestRender() lands on a clean
+    // panel.
+    display_->clearScreen(GxEPD_WHITE);
 
     stateLock_ = xSemaphoreCreateMutex();
     if (!stateLock_) {
