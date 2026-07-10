@@ -90,4 +90,48 @@ bool SdModule::exists(const String& path) {
     return SD.exists(path);
 }
 
+bool SdModule::mkdir(const String& path) {
+    if (!mounted_) return false;
+    if (SD.exists(path)) return true;
+    return SD.mkdir(path);
+}
+
+bool SdModule::removeFile(const String& path) {
+    if (!mounted_) return false;
+    return SD.remove(path);
+}
+
+bool SdModule::rmdirRecursive(const String& path) {
+    if (!mounted_) return false;
+    File root = SD.open(path);
+    if (!root) return false;
+    if (!root.isDirectory()) {
+        root.close();
+        return SD.remove(path);
+    }
+    File entry;
+    while ((entry = root.openNextFile())) {
+        String name = entry.name();
+        bool isDir = entry.isDirectory();
+        entry.close();
+        if (isDir) {
+            rmdirRecursive(name);
+        } else {
+            SD.remove(name);
+        }
+    }
+    root.close();
+    return SD.rmdir(path);
+}
+
+uint64_t SdModule::totalBytes() const {
+    if (!mounted_) return 0;
+    return SD.totalBytes();
+}
+
+uint64_t SdModule::usedBytes() const {
+    if (!mounted_) return 0;
+    return SD.usedBytes();
+}
+
 } // namespace modules

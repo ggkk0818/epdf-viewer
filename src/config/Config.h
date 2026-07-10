@@ -95,7 +95,46 @@ namespace ble {
 
 constexpr const char* DEVICE_NAME = "EPDF-Viewer";
 
+// GATT Service / Characteristic UUIDs (custom EPDF service).
+// Note: 16-bit aliases 0xFFE0/0xFFE1/0xFFE2 are commonly used by HM-10 modules
+// and most BLE explorers (nRF Connect, LightBlue) display them readably.
+constexpr const char* EPDF_SERVICE_UUID = "0000ffe0-0000-1000-8000-00805f9b34fb";
+constexpr const char* CMD_CHAR_UUID     = "0000ffe1-0000-1000-8000-00805f9b34fb";
+constexpr const char* DATA_CHAR_UUID    = "0000ffe2-0000-1000-8000-00805f9b34fb";
+
+// MTU / PHY / connection parameters.
+// Connection interval is in BLE units of 1.25ms: 0x10 = 20ms, 0x20 = 40ms.
+constexpr uint16_t TARGET_MTU      = 512;
+constexpr uint16_t CONN_INT_MIN    = 0x10;  // 20ms
+constexpr uint16_t CONN_INT_MAX    = 0x20;  // 40ms
+constexpr uint16_t CONN_LATENCY    = 0;
+constexpr uint16_t CONN_TIMEOUT    = 400;   // 4s (units of 10ms)
+constexpr size_t   MAX_CMD_LINE    = 256;   // JSON cmd line buffer
+
+// BLE-side work task (must not run on BLE host task — SD writes would block it).
+constexpr uint32_t WORK_STACK      = 8192;
+constexpr UBaseType_t WORK_PRIO    = 6;
+constexpr BaseType_t WORK_CORE     = 1;
+constexpr uint32_t  CMD_QUEUE_LEN  = 8;
+
 } // namespace ble
+
+namespace pdf {
+
+// Page dimension caps (defensive). 1bpp page size = ceil(width/8) * height.
+// 640x960 ≈ 75KB; 2048x4096 ≈ 1MB. Cap at 2MB to bound UploadSession state.
+constexpr uint16_t MAX_PAGE_DIM_W  = 2048;
+constexpr uint16_t MAX_PAGE_DIM_H  = 4096;
+constexpr size_t   MAX_PAGE_BYTES  = 2 * 1024 * 1024;
+constexpr size_t   SD_WRITE_BUF    = 4096;
+
+// Directory name format: yyyy-mm-dd_HH-MM-SS_PPP_name
+//   PPP = 3-digit page count, zero-padded (max 999 pages)
+//   name may contain any chars except '_' (reserved as separator)
+constexpr uint8_t  DIR_PAGE_FIELD_WIDTH = 3;
+constexpr uint8_t  DIR_NAME_PREFIX_LEN  = 19;  // "yyyy-mm-dd_HH-MM-SS_"
+
+} // namespace pdf
 
 namespace version {
 

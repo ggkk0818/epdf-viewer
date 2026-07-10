@@ -33,7 +33,7 @@ void DocListPage::onEvent(::app::InputEvent e, ::app::AppController& app) {
             }
             break;
         case ::app::InputEvent::Enter:
-            app.pushPage(new DocViewPage(docs_[idx_].name));
+            app.pushPage(new DocViewPage(docs_[idx_]));
             break;
         case ::app::InputEvent::Back:
             app.popPage();
@@ -61,7 +61,7 @@ void DocListPage::render(modules::DisplayModule& dm, UiCommon& ui) {
     for (uint16_t i = 0; i < shown; i++) {
         uint16_t docIdx = top_ + i;
         const auto& d = docs_[docIdx];
-        String pages = String(d.pageCount) + " 页";
+        String pages = String(d.pages) + " 页";
         ui.drawListRow(i * 28, d.name, pages, docIdx == idx_);
     }
 }

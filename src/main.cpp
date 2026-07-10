@@ -7,6 +7,9 @@
 #include "modules/InputModule.h"
 #include "modules/IconStore.h"
 #include "modules/PdfStore.h"
+#include "modules/UploadSession.h"
+#include "modules/BleDataTransport.h"
+#include "modules/BleCmdDispatcher.h"
 #include "ui/UiCommon.h"
 #include "ui/MainPage.h"
 #include "app/AppController.h"
@@ -18,15 +21,19 @@ using modules::BleModule;
 using modules::InputModule;
 using modules::IconStore;
 using modules::PdfStore;
+using modules::BleDataTransport;
+using modules::BleCmdDispatcher;
 
-static SdModule      g_sd;
-static DisplayModule g_display;
-static BatteryModule g_battery;
-static BleModule     g_ble;
-static InputModule   g_input;
-static IconStore     g_icons;
-static PdfStore      g_pdf;
-static ui::UiCommon  g_ui;
+static SdModule         g_sd;
+static DisplayModule    g_display;
+static BatteryModule    g_battery;
+static BleModule        g_ble;
+static InputModule      g_input;
+static IconStore        g_icons;
+static PdfStore         g_pdf;
+static BleDataTransport g_transport;
+static BleCmdDispatcher g_dispatcher;
+static ui::UiCommon     g_ui;
 static app::AppController g_app;
 
 static void batteryTask(void* arg) {
@@ -73,6 +80,12 @@ void setup() {
     g_pdf.begin(&g_sd);
     g_ui.begin(&g_display, &g_battery, &g_ble, &g_icons);
     g_app.begin(&g_display, &g_input, &g_battery, &g_ble, &g_sd, &g_pdf, &g_icons, &g_ui);
+
+    if (g_dispatcher.begin(&g_ble, &g_pdf, &g_sd, &g_battery, &g_transport)) {
+        g_dispatcher.start();
+    } else {
+        log_e("BleCmdDispatcher init failed");
+    }
 
     g_app.pushPage(new ui::MainPage());
 

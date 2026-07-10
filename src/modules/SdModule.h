@@ -18,6 +18,14 @@ public:
     bool readFile(const String& path, uint8_t* buf, size_t len);
     bool exists(const String& path);
 
+    bool mkdir(const String& path);
+    bool removeFile(const String& path);
+    // Remove a directory and everything inside it (files + subdirs).
+    bool rmdirRecursive(const String& path);
+
+    uint64_t totalBytes() const;
+    uint64_t usedBytes() const;
+
     bool isMounted() const { return mounted_; }
 
 private:

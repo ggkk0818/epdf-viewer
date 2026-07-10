@@ -13,7 +13,7 @@ public:
     void render(modules::DisplayModule& dm, UiCommon& ui) override;
 
 private:
-    std::vector<modules::PdfDoc> docs_;
+    std::vector<modules::PdfMeta> docs_;
     uint16_t idx_ = 0;
     uint16_t top_ = 0;
     static constexpr uint8_t VISIBLE_ROWS = (cfg::display::CONTENT_H) / 28;

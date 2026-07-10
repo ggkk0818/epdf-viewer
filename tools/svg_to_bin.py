@@ -150,7 +150,9 @@ def gen_icons() -> None:
 
 
 def gen_pdf() -> None:
-    out_dir = TF / "pdf" / "example"
+    # Directory name must match the BLE upload protocol format
+    # `yyyy-mm-dd_HH-MM-SS_PPP_name` so the device recognizes it.
+    out_dir = TF / "pdf" / "2024-01-01_00-00-00_001_example"
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"PDF page -> {out_dir}")
     write_pdf_page(out_dir / "001.bin")

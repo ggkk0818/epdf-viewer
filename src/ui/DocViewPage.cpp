@@ -13,14 +13,7 @@ constexpr uint16_t FULL_REFRESH_INTERVAL = 20;
 void DocViewPage::onEnter(::app::AppController& app) {
     pageIdx_ = 0;
     pageSwitchCount_ = 0;
-    std::vector<modules::PdfDoc> docs;
-    app.pdf().listDocs(docs);
-    for (const auto& d : docs) {
-        if (d.name == docName_) {
-            pageCount_ = d.pageCount;
-            break;
-        }
-    }
+    pageCount_ = meta_.pages;
     if (pageBuf_ == nullptr) {
         pageBuf_ = (uint8_t*)heap_caps_malloc(modules::PdfStore::VIEWPORT_BYTES, MALLOC_CAP_SPIRAM);
     }
@@ -91,7 +84,7 @@ void DocViewPage::switchToPage(::app::AppController& app, uint16_t newIdx) {
 
 bool DocViewPage::loadPage(::app::AppController& app, uint16_t idx) {
     if (!pageBuf_) return false;
-    return app.pdf().readPageViewport(docName_, idx,
+    return app.pdf().readPageViewport(meta_.dirName, idx,
                                       pageBuf_, modules::PdfStore::VIEWPORT_BYTES,
                                       pageW_, pageH_);
 }
