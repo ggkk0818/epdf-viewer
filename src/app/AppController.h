@@ -38,6 +38,7 @@ public:
     modules::DisplayModule& display() { return *dm_; }
     modules::BatteryModule& battery() { return *bat_; }
     modules::BleModule&     ble()     { return *ble_; }
+    modules::SdModule&      sd()      { return *sd_; }
     modules::PdfStore&      pdf()     { return *pdf_; }
     modules::IconStore&     icons()   { return *icons_; }
     ui::UiCommon&           ui()      { return *ui_; }

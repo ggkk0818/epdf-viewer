@@ -110,7 +110,7 @@ void UiCommon::drawListRow(uint16_t y, const String& title, const String& value,
     f.print(title);
 
     if (value.length() > 0) {
-        uint16_t valueW = value.length() * 7;
+        uint16_t valueW = f.getUTF8Width(value.c_str());
         f.setCursor(CONTENT_W - LIST_PAD_X - valueW, rowY + LIST_TEXT_Y_OFFSET - 4);
         f.print(value);
     }

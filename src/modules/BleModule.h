@@ -27,6 +27,11 @@ public:
 
     void setBatteryLevel(uint8_t percent);
 
+    // Re-pair: drop any active connection and wipe bonding state so the next
+    // phone-side pairing starts fresh. Safe to call when not connected or
+    // when no bonds exist.
+    void unpairAll();
+
     // EPDF service accessors — used by dispatcher/transport to send notifies.
     void notifyCmd(const uint8_t* data, size_t len);
     void notifyData(const uint8_t* data, size_t len);
@@ -50,6 +55,7 @@ private:
     bool                enabled_     = false;
     bool                connected_   = false;
     uint16_t            mtu_         = 23;
+    uint16_t            connHandle_  = 0;
 
     BLEServer*          server_      = nullptr;
     BLEService*         batterySvc_  = nullptr;

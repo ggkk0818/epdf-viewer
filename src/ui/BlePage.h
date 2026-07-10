@@ -11,7 +11,13 @@ public:
     void render(modules::DisplayModule& dm, UiCommon& ui) override;
 
 private:
-    bool bleOn_ = false;
+    // Row indices into the BLE page list.
+    static constexpr uint8_t ROW_SWITCH = 0;
+    static constexpr uint8_t ROW_REPAIR = 1;
+    static constexpr uint8_t ROW_COUNT  = 2;
+
+    bool    bleOn_   = false;
+    uint8_t focusIdx_ = ROW_SWITCH;
 };
 
 } // namespace ui

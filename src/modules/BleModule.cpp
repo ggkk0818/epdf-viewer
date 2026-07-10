@@ -5,6 +5,10 @@
 #include <BLEUtils.h>
 #include <cstring>
 
+#if defined(CONFIG_NIMBLE_ENABLED)
+#include <host/ble_store.h>
+#endif
+
 #include "../config/Config.h"
 
 // S3 framework uses NimBLE backend for BLE; the legacy Bluedroid APIs
@@ -169,9 +173,23 @@ void BleModule::notifyData(const uint8_t* data, size_t len) {
     }
 }
 
+void BleModule::unpairAll() {
+    if (!initialized_) return;
+    if (connected_ && server_) {
+        server_->disconnect(connHandle_);
+        log_i("BLE unpair: disconnected connHandle=%u", (unsigned)connHandle_);
+    }
+#if defined(CONFIG_NIMBLE_ENABLED)
+    int rc = ble_store_clear();
+    log_i("BLE unpair: ble_store_clear rc=%d", rc);
+    (void)rc;
+#endif
+}
+
 void BleModule::handleConnect(uint16_t connHandle) {
-    connected_ = true;
-    mtu_       = cfg::ble::TARGET_MTU;  // optimistic; onMtuChanged corrects if peer rejects
+    connected_  = true;
+    connHandle_ = connHandle;
+    mtu_        = cfg::ble::TARGET_MTU;  // optimistic; onMtuChanged corrects if peer rejects
 
     // Push connection interval toward the configured range for throughput.
     // The BLE library normalizes this across NimBLE/Bluedroid backends.
@@ -201,6 +219,7 @@ void BleModule::handleMtuChanged(uint16_t connHandle, uint16_t mtu) {
 
 void BleModule::handleDisconnect() {
     connected_ = false;
+    connHandle_ = 0;
     mtu_       = 23;
     cmdLineBuf_.remove(0, cmdLineBuf_.length());
     log_i("BLE disconnect");
