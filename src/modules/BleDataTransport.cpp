@@ -13,13 +13,18 @@ namespace modules {
 namespace {
 
 constexpr uint16_t ATT_NOTIFY_OVERHEAD = 3;
+constexpr size_t PREVIEW_MAX_CHUNK = 244;
 constexpr size_t PREVIEW_MIN_CHUNK = 20;
+constexpr uint32_t PREVIEW_SEND_DELAY_MS = 6;
+constexpr uint32_t PREVIEW_RETRY_BASE_MS = 12;
+constexpr uint8_t PREVIEW_MAX_RETRIES = 6;
 
 size_t previewChunkSize(const BleModule* ble) {
     uint16_t mtu = ble ? ble->negotiatedMtu() : 23;
     if (mtu <= ATT_NOTIFY_OVERHEAD) return PREVIEW_MIN_CHUNK;
 
     size_t payload = (size_t)(mtu - ATT_NOTIFY_OVERHEAD);
+    if (payload > PREVIEW_MAX_CHUNK) payload = PREVIEW_MAX_CHUNK;
     return payload < PREVIEW_MIN_CHUNK ? PREVIEW_MIN_CHUNK : payload;
 }
 
@@ -119,11 +124,36 @@ bool BleDataTransport::streamPreview(BleModule* ble, size_t totalBytes,
                       ? (totalBytes - sent) : chunkSize;
         int got = previewFile_.read(buf, want);
         if (got <= 0) { ok = false; break; }
-        ble->notifyData(buf, (size_t)got);
+
+        bool chunkSent = false;
+        for (uint8_t attempt = 0; attempt < PREVIEW_MAX_RETRIES; attempt++) {
+            uint32_t code = 0;
+            if (ble->notifyData(buf, (size_t)got, &code)) {
+                chunkSent = true;
+                break;
+            }
+            if (!ble->isConnected()) {
+                log_w("preview: BLE disconnected mid-stream");
+                ok = false;
+                break;
+            }
+
+            uint32_t delayMs = PREVIEW_RETRY_BASE_MS * (uint32_t)(attempt + 1);
+            log_w("preview: notify retry %u/%u at offset=%u len=%u code=%u",
+                  (unsigned)(attempt + 1),
+                  (unsigned)PREVIEW_MAX_RETRIES,
+                  (unsigned)sent,
+                  (unsigned)got,
+                  (unsigned)code);
+            vTaskDelay(pdMS_TO_TICKS(delayMs));
+        }
+        if (!chunkSent) {
+            ok = false;
+            break;
+        }
+
         sent += (size_t)got;
-        // Yield to let the BLE stack drain the notify queue. Without this,
-        // back-to-back notifies can overflow NimBLE's internal queue.
-        vTaskDelay(pdMS_TO_TICKS(1));
+        vTaskDelay(pdMS_TO_TICKS(PREVIEW_SEND_DELAY_MS));
     }
 
     free(buf);

@@ -35,7 +35,7 @@ public:
 
     // EPDF service accessors — used by dispatcher/transport to send notifies.
     void notifyCmd(const uint8_t* data, size_t len);
-    void notifyData(const uint8_t* data, size_t len);
+    bool notifyData(const uint8_t* data, size_t len, uint32_t* outCode = nullptr);
 
     bool     isConnected() const  { return connected_; }
     uint16_t negotiatedMtu() const { return mtu_; }
@@ -55,8 +55,11 @@ private:
     bool                initialized_ = false;
     bool                enabled_     = false;
     bool                connected_   = false;
+    bool                dataNotifySubscribed_ = false;
     uint16_t            mtu_         = 23;
     uint16_t            connHandle_  = 0;
+    BLECharacteristicCallbacks::Status lastDataNotifyStatus_ = BLECharacteristicCallbacks::Status::SUCCESS_NOTIFY;
+    uint32_t            lastDataNotifyCode_ = 0;
 
     BLEServer*          server_      = nullptr;
     BLEService*         batterySvc_  = nullptr;
@@ -86,6 +89,8 @@ private:
     void handleDisconnect();
     void handleCmdWrite(const uint8_t* data, size_t len);
     void handleDataWrite(const uint8_t* data, size_t len);
+    void handleDataSubscribe(uint16_t subValue);
+    void handleDataNotifyStatus(BLECharacteristicCallbacks::Status status, uint32_t code);
     void dispatchCmdLine(const String& line);
 
     // Full teardown inverse of begin(): stops advertising, calls

@@ -25,6 +25,8 @@ const BLEUUID EPDF_SERVICE_UUID(cfg::ble::EPDF_SERVICE_UUID);
 const BLEUUID CMD_CHAR_UUID(cfg::ble::CMD_CHAR_UUID);
 const BLEUUID DATA_CHAR_UUID(cfg::ble::DATA_CHAR_UUID);
 
+constexpr uint16_t ATT_NOTIFY_OVERHEAD = 3;
+
 BleModule* g_self = nullptr;  // for inner-class trampolines
 
 } // namespace
@@ -82,6 +84,19 @@ public:
         if (v.length() && g_self) {
             g_self->handleDataWrite(reinterpret_cast<const uint8_t*>(v.c_str()), v.length());
         }
+    }
+
+#if defined(CONFIG_NIMBLE_ENABLED)
+    void onSubscribe(BLECharacteristic* chr, ble_gap_conn_desc* desc, uint16_t subValue) override {
+        (void)chr;
+        (void)desc;
+        if (g_self) g_self->handleDataSubscribe(subValue);
+    }
+#endif
+
+    void onStatus(BLECharacteristic* chr, Status s, uint32_t code) override {
+        (void)chr;
+        if (g_self) g_self->handleDataNotifyStatus(s, code);
     }
 };
 
@@ -214,17 +229,29 @@ void BleModule::notifyCmd(const uint8_t* data, size_t len) {
     }
 }
 
-void BleModule::notifyData(const uint8_t* data, size_t len) {
-    if (dataChar_) {
-        size_t maxPayload = (mtu_ > 3) ? (size_t)(mtu_ - 3) : (size_t)20;
-        if (len > maxPayload) {
-            log_w("BLE data notify len=%u exceeds mtu payload=%u",
-                  (unsigned)len,
-                  (unsigned)maxPayload);
-        }
-        dataChar_->setValue((uint8_t*)data, (size_t)len);
-        dataChar_->notify();
+bool BleModule::notifyData(const uint8_t* data, size_t len, uint32_t* outCode) {
+    if (outCode) *outCode = 0;
+    if (!dataChar_ || !connected_ || !dataNotifySubscribed_ || !data || len == 0) {
+        if (outCode) *outCode = 0;
+        return false;
     }
+
+    size_t maxPayload = (mtu_ > ATT_NOTIFY_OVERHEAD)
+                        ? (size_t)(mtu_ - ATT_NOTIFY_OVERHEAD)
+                        : (size_t)20;
+    if (len > maxPayload) {
+        log_w("BLE data notify len=%u exceeds mtu payload=%u",
+              (unsigned)len,
+              (unsigned)maxPayload);
+        return false;
+    }
+
+    lastDataNotifyStatus_ = BLECharacteristicCallbacks::Status::ERROR_GATT;
+    lastDataNotifyCode_ = 0;
+    dataChar_->setValue((uint8_t*)data, (size_t)len);
+    dataChar_->notify();
+    if (outCode) *outCode = lastDataNotifyCode_;
+    return lastDataNotifyStatus_ == BLECharacteristicCallbacks::Status::SUCCESS_NOTIFY;
 }
 
 void BleModule::handleConnect(uint16_t connHandle) {
@@ -260,11 +287,24 @@ void BleModule::handleMtuChanged(uint16_t connHandle, uint16_t mtu) {
 
 void BleModule::handleDisconnect() {
     connected_ = false;
+    dataNotifySubscribed_ = false;
     connHandle_ = 0;
     mtu_       = 23;
+    lastDataNotifyStatus_ = BLECharacteristicCallbacks::Status::SUCCESS_NOTIFY;
+    lastDataNotifyCode_ = 0;
     cmdLineBuf_.remove(0, cmdLineBuf_.length());
     log_i("BLE disconnect");
     if (connectCb_) connectCb_(false, connectCtx_);
+}
+
+void BleModule::handleDataSubscribe(uint16_t subValue) {
+    dataNotifySubscribed_ = (subValue != 0);
+    log_i("BLE data subscription=%u", (unsigned)subValue);
+}
+
+void BleModule::handleDataNotifyStatus(BLECharacteristicCallbacks::Status status, uint32_t code) {
+    lastDataNotifyStatus_ = status;
+    lastDataNotifyCode_ = code;
 }
 
 void BleModule::handleCmdWrite(const uint8_t* data, size_t len) {
