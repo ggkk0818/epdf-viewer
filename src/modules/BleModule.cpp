@@ -165,9 +165,22 @@ void BleModule::end() {
 
     BLEDevice::stopAdvertising();
 
-    // Fully tear down the BLE stack. Any active connection is dropped by the
-    // stack; the disconnect callback may fire synchronously inside deinit but
-    // is guarded by enabled_ above. NimBLE bonding data persists in NVS, so
+    // Drop any active connection before deinit. Calling BLEDevice::deinit()
+    // with a live connection crashes the NimBLE host task. Disconnect is
+    // asynchronous — poll connected_ (cleared by handleDisconnect from the
+    // host task) with a timeout so we don't deadlock if the peer is slow.
+    if (connected_ && server_) {
+        log_i("BLE teardown: disconnecting connHandle=%u", (unsigned)connHandle_);
+        server_->disconnect(connHandle_);
+        for (int i = 0; i < 50 && connected_; ++i) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+        if (connected_) {
+            log_w("BLE teardown: disconnect did not complete in 500ms, deinit anyway");
+        }
+    }
+
+    // Fully tear down the BLE stack. NimBLE bonding data persists in NVS, so
     // previously paired peers reconnect without re-pairing after re-init.
     BLEDevice::deinit();
 
