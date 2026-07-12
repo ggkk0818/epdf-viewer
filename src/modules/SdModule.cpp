@@ -3,6 +3,21 @@
 
 namespace modules {
 
+namespace {
+
+bool isSpecialDirEntry(const String& name) {
+    return name == "." || name == ".." || name.endsWith("/.") || name.endsWith("/..");
+}
+
+String joinChildPath(const String& parent, const String& child) {
+    if (child.length() == 0) return String();
+    if (child[0] == '/') return child;
+    if (parent.endsWith("/")) return parent + child;
+    return parent + "/" + child;
+}
+
+} // namespace
+
 bool SdModule::begin() {
     SPI.begin(cfg::pin::SD_SCK, cfg::pin::SD_MISO, cfg::pin::SD_MOSI, cfg::pin::SD_CS);
     if (!SD.begin(cfg::pin::SD_CS, SPI, cfg::display::SPI_HZ)) {
@@ -109,19 +124,47 @@ bool SdModule::rmdirRecursive(const String& path) {
         root.close();
         return SD.remove(path);
     }
+
+    std::vector<String> childPaths;
+    std::vector<bool> childIsDir;
     File entry;
     while ((entry = root.openNextFile())) {
         String name = entry.name();
         bool isDir = entry.isDirectory();
         entry.close();
-        if (isDir) {
-            rmdirRecursive(name);
-        } else {
-            SD.remove(name);
+
+        if (name.length() == 0 || isSpecialDirEntry(name)) {
+            if (name.length() == 0) {
+                log_w("rmdirRecursive: empty child under %s", path.c_str());
+            }
+            continue;
         }
+
+        String childPath = joinChildPath(path, name);
+        if (childPath.length() == 0) {
+            log_w("rmdirRecursive: invalid child path under %s", path.c_str());
+            root.close();
+            return false;
+        }
+        childPaths.push_back(childPath);
+        childIsDir.push_back(isDir);
     }
     root.close();
-    return SD.rmdir(path);
+
+    for (size_t i = 0; i < childPaths.size(); i++) {
+        bool ok = childIsDir[i] ? rmdirRecursive(childPaths[i])
+                                : SD.remove(childPaths[i]);
+        if (!ok) {
+            log_w("rmdirRecursive: failed to remove %s", childPaths[i].c_str());
+            return false;
+        }
+    }
+
+    if (!SD.rmdir(path)) {
+        log_w("rmdirRecursive: failed to remove dir %s", path.c_str());
+        return false;
+    }
+    return true;
 }
 
 uint64_t SdModule::totalBytes() const {

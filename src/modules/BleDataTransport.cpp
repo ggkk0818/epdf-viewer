@@ -12,7 +12,16 @@ namespace modules {
 
 namespace {
 
-constexpr size_t PREVIEW_CHUNK = 4096;
+constexpr uint16_t ATT_NOTIFY_OVERHEAD = 3;
+constexpr size_t PREVIEW_MIN_CHUNK = 20;
+
+size_t previewChunkSize(const BleModule* ble) {
+    uint16_t mtu = ble ? ble->negotiatedMtu() : 23;
+    if (mtu <= ATT_NOTIFY_OVERHEAD) return PREVIEW_MIN_CHUNK;
+
+    size_t payload = (size_t)(mtu - ATT_NOTIFY_OVERHEAD);
+    return payload < PREVIEW_MIN_CHUNK ? PREVIEW_MIN_CHUNK : payload;
+}
 
 } // namespace
 
@@ -90,18 +99,24 @@ bool BleDataTransport::streamPreview(BleModule* ble, size_t totalBytes,
     if (!previewFile_) return false;
     if (!ble) { previewFile_.close(); return false; }
 
-    uint8_t* buf = (uint8_t*)malloc(PREVIEW_CHUNK);
+    size_t chunkSize = previewChunkSize(ble);
+    uint8_t* buf = (uint8_t*)malloc(chunkSize);
     if (!buf) {
-        log_e("preview: malloc %u failed", (unsigned)PREVIEW_CHUNK);
+        log_e("preview: malloc %u failed", (unsigned)chunkSize);
         previewFile_.close();
         return false;
     }
 
+    log_i("preview: streaming %u bytes in %u-byte BLE chunks (mtu=%u)",
+          (unsigned)totalBytes,
+          (unsigned)chunkSize,
+          (unsigned)ble->negotiatedMtu());
+
     size_t sent = 0;
     bool ok = true;
     while (sent < totalBytes) {
-        size_t want = (totalBytes - sent < PREVIEW_CHUNK)
-                      ? (totalBytes - sent) : PREVIEW_CHUNK;
+        size_t want = (totalBytes - sent < chunkSize)
+                      ? (totalBytes - sent) : chunkSize;
         int got = previewFile_.read(buf, want);
         if (got <= 0) { ok = false; break; }
         ble->notifyData(buf, (size_t)got);

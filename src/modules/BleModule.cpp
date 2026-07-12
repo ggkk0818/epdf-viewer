@@ -216,6 +216,12 @@ void BleModule::notifyCmd(const uint8_t* data, size_t len) {
 
 void BleModule::notifyData(const uint8_t* data, size_t len) {
     if (dataChar_) {
+        size_t maxPayload = (mtu_ > 3) ? (size_t)(mtu_ - 3) : (size_t)20;
+        if (len > maxPayload) {
+            log_w("BLE data notify len=%u exceeds mtu payload=%u",
+                  (unsigned)len,
+                  (unsigned)maxPayload);
+        }
         dataChar_->setValue((uint8_t*)data, (size_t)len);
         dataChar_->notify();
     }
@@ -224,7 +230,7 @@ void BleModule::notifyData(const uint8_t* data, size_t len) {
 void BleModule::handleConnect(uint16_t connHandle) {
     connected_  = true;
     connHandle_ = connHandle;
-    mtu_        = cfg::ble::TARGET_MTU;  // optimistic; onMtuChanged corrects if peer rejects
+    mtu_        = 23;
 
     // Push connection interval toward the configured range for throughput.
     // The BLE library normalizes this across NimBLE/Bluedroid backends.

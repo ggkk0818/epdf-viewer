@@ -53,8 +53,8 @@ public:
                                       size_t& outTotalBytes,
                                       uint16_t& outWidth,
                                       uint16_t& outHeight);
-    // Streams the opened preview file in 4KB chunks via BleModule::notifyData
-    // until EOF. Runs synchronously — caller (work task) blocks until done.
+    // Streams the opened preview file via MTU-sized BleModule::notifyData
+    // notifications until EOF. Runs synchronously — caller (work task) blocks until done.
     // Returns false on IO error mid-stream.
     bool                streamPreview(BleModule* ble,
                                        size_t totalBytes,
