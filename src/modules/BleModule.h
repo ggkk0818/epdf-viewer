@@ -11,6 +11,12 @@ namespace modules {
 // (WriteNoResp+Notify). On connect, configures MTU=512, 2M PHY, and tight
 // connection params for throughput.
 //
+// begin()/end() form a full init/teardown pair: end() calls BLEDevice::deinit()
+// so the BLE stack is fully disabled (not just advertising paused). Re-calling
+// begin() re-registers device name, services and characteristics from scratch.
+// NimBLE bonding data lives in NVS and survives end(), so previously paired
+// peers reconnect without re-pairing.
+//
 // Higher-level components (BleCmdDispatcher, BleDataTransport) register
 // callbacks to receive framed cmd lines and raw data chunks. The BLE host
 // task invokes these callbacks synchronously — they must not block on SD I/O
@@ -26,11 +32,6 @@ public:
     bool isEnabled() const { return enabled_; }
 
     void setBatteryLevel(uint8_t percent);
-
-    // Re-pair: drop any active connection and wipe bonding state so the next
-    // phone-side pairing starts fresh. Safe to call when not connected or
-    // when no bonds exist.
-    void unpairAll();
 
     // EPDF service accessors — used by dispatcher/transport to send notifies.
     void notifyCmd(const uint8_t* data, size_t len);
@@ -86,6 +87,10 @@ private:
     void handleCmdWrite(const uint8_t* data, size_t len);
     void handleDataWrite(const uint8_t* data, size_t len);
     void dispatchCmdLine(const String& line);
+
+    // Full teardown inverse of begin(): stops advertising, calls
+    // BLEDevice::deinit(), clears all service/characteristic handles.
+    void end();
 };
 
 } // namespace modules

@@ -5,10 +5,6 @@
 #include <BLEUtils.h>
 #include <cstring>
 
-#if defined(CONFIG_NIMBLE_ENABLED)
-#include <host/ble_store.h>
-#endif
-
 #include "../config/Config.h"
 
 // S3 framework uses NimBLE backend for BLE; the legacy Bluedroid APIs
@@ -47,9 +43,12 @@ public:
         if (g_self && desc) g_self->handleConnect(desc->conn_handle);
     }
     void onDisconnect(BLEServer* server, ble_gap_conn_desc* desc) override {
-        (void)server;
         (void)desc;
-        server->getAdvertising()->start();  // resume advertising
+        // Only auto-resume advertising when BLE is still enabled — avoids
+        // touching the stack while end() is tearing it down.
+        if (g_self && g_self->isEnabled()) {
+            server->getAdvertising()->start();
+        }
         if (g_self) g_self->handleDisconnect();
     }
     void onMtuChanged(BLEServer* server, ble_gap_conn_desc* desc, uint16_t mtu) override {
@@ -58,7 +57,9 @@ public:
     }
 #else
     void onDisconnect(BLEServer* server) override {
-        server->getAdvertising()->start();
+        if (g_self && g_self->isEnabled()) {
+            server->getAdvertising()->start();
+        }
         if (g_self) g_self->handleDisconnect();
     }
 #endif
@@ -133,9 +134,15 @@ bool BleModule::begin() {
 }
 
 void BleModule::setEnabled(bool on) {
-    if (!initialized_) return;
     if (on == enabled_) return;
     if (on) {
+        // Re-initialise the BLE stack and services every time we (re)enable.
+        // begin() is idempotent when already initialised, and a no-op-safe full
+        // re-init after end().
+        if (!begin()) {
+            log_e("BLE re-init failed; staying disabled");
+            return;
+        }
         BLEAdvertising* adv = BLEDevice::getAdvertising();
         adv->addServiceUUID(EPDF_SERVICE_UUID);
         adv->addServiceUUID(BATTERY_SERVICE_UUID);
@@ -146,10 +153,38 @@ void BleModule::setEnabled(bool on) {
         enabled_ = true;
         log_i("BLE advertising started");
     } else {
-        BLEDevice::stopAdvertising();
-        enabled_ = false;
-        log_i("BLE advertising stopped");
+        end();
     }
+}
+
+void BleModule::end() {
+    if (!initialized_) return;
+
+    // Signal onDisconnect trampoline not to restart advertising during teardown.
+    enabled_ = false;
+
+    BLEDevice::stopAdvertising();
+
+    // Fully tear down the BLE stack. Any active connection is dropped by the
+    // stack; the disconnect callback may fire synchronously inside deinit but
+    // is guarded by enabled_ above. NimBLE bonding data persists in NVS, so
+    // previously paired peers reconnect without re-pairing after re-init.
+    BLEDevice::deinit();
+
+    server_      = nullptr;
+    batterySvc_  = nullptr;
+    epdfSvc_     = nullptr;
+    batteryChar_ = nullptr;
+    cmdChar_     = nullptr;
+    dataChar_    = nullptr;
+
+    initialized_ = false;
+    connected_   = false;
+    connHandle_  = 0;
+    mtu_         = 23;
+    cmdLineBuf_.remove(0, cmdLineBuf_.length());
+
+    log_i("BleModule deinit complete (BLE stack fully disabled)");
 }
 
 void BleModule::setBatteryLevel(uint8_t percent) {
@@ -171,19 +206,6 @@ void BleModule::notifyData(const uint8_t* data, size_t len) {
         dataChar_->setValue((uint8_t*)data, (size_t)len);
         dataChar_->notify();
     }
-}
-
-void BleModule::unpairAll() {
-    if (!initialized_) return;
-    if (connected_ && server_) {
-        server_->disconnect(connHandle_);
-        log_i("BLE unpair: disconnected connHandle=%u", (unsigned)connHandle_);
-    }
-#if defined(CONFIG_NIMBLE_ENABLED)
-    int rc = ble_store_clear();
-    log_i("BLE unpair: ble_store_clear rc=%d", rc);
-    (void)rc;
-#endif
 }
 
 void BleModule::handleConnect(uint16_t connHandle) {
