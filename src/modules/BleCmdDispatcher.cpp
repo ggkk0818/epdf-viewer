@@ -437,7 +437,9 @@ void BleCmdDispatcher::sendResponse(const JsonDocument& resp) {
     String out;
     serializeJson(resp, out);
     out += '\n';
-    ble_->notifyCmd(reinterpret_cast<const uint8_t*>(out.c_str()), out.length());
+    if (!ble_ || !ble_->notifyCmd(reinterpret_cast<const uint8_t*>(out.c_str()), out.length())) {
+        log_w("BLE cmd response send failed len=%u", (unsigned)out.length());
+    }
 }
 
 void BleCmdDispatcher::sendSimple(const char* cmd, const char* status) {

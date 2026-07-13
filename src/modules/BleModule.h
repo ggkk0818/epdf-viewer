@@ -34,7 +34,7 @@ public:
     void setBatteryLevel(uint8_t percent);
 
     // EPDF service accessors — used by dispatcher/transport to send notifies.
-    void notifyCmd(const uint8_t* data, size_t len);
+    bool notifyCmd(const uint8_t* data, size_t len);
     bool notifyData(const uint8_t* data, size_t len, uint32_t* outCode = nullptr);
 
     bool     isConnected() const  { return connected_; }

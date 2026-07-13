@@ -26,6 +26,17 @@ const BLEUUID CMD_CHAR_UUID(cfg::ble::CMD_CHAR_UUID);
 const BLEUUID DATA_CHAR_UUID(cfg::ble::DATA_CHAR_UUID);
 
 constexpr uint16_t ATT_NOTIFY_OVERHEAD = 3;
+constexpr size_t GATT_MAX_VALUE_LEN = 512;
+constexpr size_t MIN_NOTIFY_PAYLOAD = 20;
+constexpr uint32_t CMD_NOTIFY_SEND_DELAY_MS = 2;
+
+size_t notifyPayloadSize(uint16_t mtu, size_t ceiling) {
+    if (mtu <= ATT_NOTIFY_OVERHEAD) return MIN_NOTIFY_PAYLOAD;
+
+    size_t payload = (size_t)(mtu - ATT_NOTIFY_OVERHEAD);
+    if (payload > ceiling) payload = ceiling;
+    return payload < MIN_NOTIFY_PAYLOAD ? MIN_NOTIFY_PAYLOAD : payload;
+}
 
 BleModule* g_self = nullptr;  // for inner-class trampolines
 
@@ -222,11 +233,31 @@ void BleModule::setBatteryLevel(uint8_t percent) {
     batteryChar_->notify();
 }
 
-void BleModule::notifyCmd(const uint8_t* data, size_t len) {
-    if (cmdChar_) {
-        cmdChar_->setValue((uint8_t*)data, (size_t)len);
-        cmdChar_->notify();
+bool BleModule::notifyCmd(const uint8_t* data, size_t len) {
+    if (!cmdChar_ || !connected_ || !data || len == 0) {
+        return false;
     }
+
+    const size_t maxPayload = notifyPayloadSize(mtu_, GATT_MAX_VALUE_LEN);
+    if (len > maxPayload) {
+        log_i("BLE cmd notify chunking len=%u payload=%u mtu=%u",
+              (unsigned)len,
+              (unsigned)maxPayload,
+              (unsigned)mtu_);
+    }
+
+    for (size_t offset = 0; offset < len; offset += maxPayload) {
+        const size_t chunkLen = ((len - offset) < maxPayload)
+                                ? (len - offset)
+                                : maxPayload;
+        cmdChar_->setValue((uint8_t*)(data + offset), chunkLen);
+        cmdChar_->notify();
+        if (offset + chunkLen < len) {
+            vTaskDelay(pdMS_TO_TICKS(CMD_NOTIFY_SEND_DELAY_MS));
+        }
+    }
+
+    return true;
 }
 
 bool BleModule::notifyData(const uint8_t* data, size_t len, uint32_t* outCode) {
@@ -236,9 +267,7 @@ bool BleModule::notifyData(const uint8_t* data, size_t len, uint32_t* outCode) {
         return false;
     }
 
-    size_t maxPayload = (mtu_ > ATT_NOTIFY_OVERHEAD)
-                        ? (size_t)(mtu_ - ATT_NOTIFY_OVERHEAD)
-                        : (size_t)20;
+    size_t maxPayload = notifyPayloadSize(mtu_, GATT_MAX_VALUE_LEN);
     if (len > maxPayload) {
         log_w("BLE data notify len=%u exceeds mtu payload=%u",
               (unsigned)len,
