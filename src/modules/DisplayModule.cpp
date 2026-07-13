@@ -21,12 +21,6 @@ bool DisplayModule::begin() {
     u8g2_.setForegroundColor(GxEPD_BLACK);
     u8g2_.setBackgroundColor(GxEPD_WHITE);
 
-    // Prime the panel: the first user-visible render can come up blank on a
-    // cold-boot SSD1683 because its RAM and LUT state are undefined until a
-    // full clear+refresh has run once. Do that synchronously here, before the
-    // display task starts, so the first requestRender() lands on a clean
-    // panel.
-    display_->clearScreen(GxEPD_WHITE);
 
     stateLock_ = xSemaphoreCreateMutex();
     if (!stateLock_) {
@@ -111,15 +105,37 @@ void DisplayModule::displayLoop() {
             }
             xSemaphoreGive(stateLock_);
 
-            // Drive the panel. GxEPD2's display()/displayWindow() block on
-            // the BUSY pin, so the next iteration's draw can't start until
-            // the refresh finishes — no buffer tearing risk.
+            // Drive the panel. GxEPD2's display()/displayWindow() hand off to
+            // _waitWhileBusy(), which only polls the BUSY pin — it returns the
+            // instant BUSY deasserts (or its 10s safety timeout fires). The
+            // panel's full_refresh_time / partial_refresh_time are *not*
+            // enforced as a minimum there, so the call can come back before
+            // the SSD1683 has finished driving the refresh waveforms. Letting
+            // the loop proceed then re-grabs stateLock_ and re-issues a
+            // refresh against a controller that is still mid-update — the
+            // BUSY-based serialization between passes is effectively broken.
+            //
+            // Floor each pass at the panel's nominal refresh duration (read
+            // from the panel class, so it tracks a future panel swap) and pad
+            // with vTaskDelay if display() returned early.
+            const uint16_t refreshMs = (mode == RefreshMode::Full)
+                ? display_->epd2.full_refresh_time
+                : display_->epd2.partial_refresh_time;
+            const uint32_t refreshStart = millis();
             if (mode == RefreshMode::Full) {
                 display_->display(false);
             } else {
                 display_->displayWindow(0, 0,
                                         cfg::display::WIDTH,
                                         cfg::display::HEIGHT);
+            }
+            // millis() - refreshStart is wraparound-safe. Cast through signed
+            // so a pass that legitimately ran long (refreshMs already elapsed)
+            // yields a non-positive remainder and skips the padding.
+            const int32_t remaining =
+                (int32_t)refreshMs - (int32_t)(millis() - refreshStart);
+            if (remaining > 0) {
+                vTaskDelay(pdMS_TO_TICKS(remaining));
             }
 
             // If another request arrived during this pass, loop and render
