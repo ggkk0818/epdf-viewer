@@ -36,27 +36,27 @@ void ConfirmDialog::onEvent(::app::InputEvent e, ::app::AppController& app) {
     void* cbCtx = nullptr;
     bool closeDialog = false;
 
-    app.display().lockState();
-    switch (e) {
-        case ::app::InputEvent::UpLeft:
-        case ::app::InputEvent::DownRight:
-            focusConfirm_ = !focusConfirm_;
-            changed = true;
-            break;
-        case ::app::InputEvent::Enter:
-            if (focusConfirm_ && onConfirm_) {
-                confirm = true;
-                cb = onConfirm_;
-                cbCtx = ctx_;
-            }
-            closeDialog = true;
-            break;
-        case ::app::InputEvent::Back:
-            closeDialog = true;
-            break;
-        default: break;
-    }
-    app.display().unlockState();
+    app.mutateUiState([&] {
+        switch (e) {
+            case ::app::InputEvent::UpLeft:
+            case ::app::InputEvent::DownRight:
+                focusConfirm_ = !focusConfirm_;
+                changed = true;
+                break;
+            case ::app::InputEvent::Enter:
+                if (focusConfirm_ && onConfirm_) {
+                    confirm = true;
+                    cb = onConfirm_;
+                    cbCtx = ctx_;
+                }
+                closeDialog = true;
+                break;
+            case ::app::InputEvent::Back:
+                closeDialog = true;
+                break;
+            default: break;
+        }
+    });
 
     if (changed) {
         app.requestRender();

@@ -10,11 +10,11 @@ void DocListPage::onEnter(::app::AppController& app) {
     std::vector<DocMeta> docs;
     app.pdf().listDocs(docs);
 
-    app.display().lockState();
-    docs_ = std::move(docs);
-    idx_ = 0;
-    top_ = 0;
-    app.display().unlockState();
+    app.mutateUiState([&] {
+        docs_ = std::move(docs);
+        idx_ = 0;
+        top_ = 0;
+    });
 }
 
 void DocListPage::onEvent(::app::InputEvent e, ::app::AppController& app) {
@@ -22,37 +22,37 @@ void DocListPage::onEvent(::app::InputEvent e, ::app::AppController& app) {
     bool openDoc = false;
     DocMeta selected;
     bool changed = false;
-    app.display().lockState();
-    bool empty = docs_.empty();
-    if (!empty) {
-        switch (e) {
-            case ::app::InputEvent::UpLeft:
-                if (idx_ > 0) {
-                    idx_--;
-                    if (idx_ < top_) top_ = idx_;
-                    changed = true;
-                }
-                break;
-            case ::app::InputEvent::DownRight:
-                if (idx_ + 1 < docs_.size()) {
-                    idx_++;
-                    if (idx_ - top_ >= VISIBLE_ROWS) top_ = idx_ - VISIBLE_ROWS + 1;
-                    changed = true;
-                }
-                break;
-            case ::app::InputEvent::Enter:
-                selected = docs_[idx_];
-                openDoc = true;
-                break;
-            case ::app::InputEvent::Back:
-                goBack = true;
-                break;
-            default: break;
+    app.mutateUiState([&] {
+        bool empty = docs_.empty();
+        if (!empty) {
+            switch (e) {
+                case ::app::InputEvent::UpLeft:
+                    if (idx_ > 0) {
+                        idx_--;
+                        if (idx_ < top_) top_ = idx_;
+                        changed = true;
+                    }
+                    break;
+                case ::app::InputEvent::DownRight:
+                    if (idx_ + 1 < docs_.size()) {
+                        idx_++;
+                        if (idx_ - top_ >= VISIBLE_ROWS) top_ = idx_ - VISIBLE_ROWS + 1;
+                        changed = true;
+                    }
+                    break;
+                case ::app::InputEvent::Enter:
+                    selected = docs_[idx_];
+                    openDoc = true;
+                    break;
+                case ::app::InputEvent::Back:
+                    goBack = true;
+                    break;
+                default: break;
+            }
+        } else if (e == ::app::InputEvent::Back) {
+            goBack = true;
         }
-    } else if (e == ::app::InputEvent::Back) {
-        goBack = true;
-    }
-    app.display().unlockState();
+    });
 
     if (goBack) {
         app.popPage();

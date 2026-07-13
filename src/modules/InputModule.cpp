@@ -96,7 +96,29 @@ void InputModule::onButtonEdge(uint8_t idx, bool pressed) {
 
 void InputModule::emit(InputEvent e) {
     if (e == InputEvent::None) return;
-    xQueueSendToBack(queue_, &e, 0);
+    if (xQueueSendToBack(queue_, &e, 0) == pdPASS) {
+        return;
+    }
+
+    InputEvent dropped = InputEvent::None;
+    if (xQueueReceive(queue_, &dropped, 0) == pdPASS &&
+        xQueueSendToBack(queue_, &e, 0) == pdPASS) {
+        overwrittenCount_++;
+        if ((overwrittenCount_ & 0x7U) == 1U) {
+            log_w("input queue full, dropped oldest event=%u latest=%u overwritten=%lu",
+                  (unsigned)dropped,
+                  (unsigned)e,
+                  (unsigned long)overwrittenCount_);
+        }
+        return;
+    }
+
+    droppedCount_++;
+    if ((droppedCount_ & 0x7U) == 1U) {
+        log_e("input queue saturated, failed to enqueue event=%u dropped=%lu",
+              (unsigned)e,
+              (unsigned long)droppedCount_);
+    }
 }
 
 } // namespace modules

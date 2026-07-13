@@ -20,8 +20,12 @@ String formatStorage(uint64_t used, uint64_t total) {
 } // namespace
 
 void SettingsPage::onEnter(::app::AppController& app) {
-    storageUsed_  = app.sd().usedBytes();
-    storageTotal_ = app.sd().totalBytes();
+    uint64_t storageUsed = app.sd().usedBytes();
+    uint64_t storageTotal = app.sd().totalBytes();
+    app.mutateUiState([&] {
+        storageUsed_  = storageUsed;
+        storageTotal_ = storageTotal;
+    });
 }
 
 void SettingsPage::onEvent(::app::InputEvent e, ::app::AppController& app) {

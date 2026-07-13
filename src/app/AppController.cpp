@@ -72,24 +72,27 @@ void AppController::pushPage(ui::Page* p) {
 
     // Publish the page only after onEnter has initialized the state that
     // render() observes.
-    dm_->lockState();
-    stack_.push(p);
-    dm_->unlockState();
+    mutateUiState([&] {
+        stack_.push(p);
+    });
     requestRender(modules::RefreshMode::Full);
 }
 
 void AppController::popPage() {
-    dm_->lockState();
-    ui::Page* p = stack_.pop();
-    if (p) {
-        p->onExit(*this);
-        delete p;
-    }
-    ui::Page* top = stack_.top();
-    dm_->unlockState();
+    ui::Page* top = nullptr;
+    mutateUiState([&] {
+        ui::Page* p = stack_.pop();
+        if (p) {
+            p->onExit(*this);
+            delete p;
+        }
+        top = stack_.top();
+        if (top) {
+            top->onEnter(*this);
+        }
+    });
 
     if (top) {
-        top->onEnter(*this);
         requestRender(modules::RefreshMode::Full);
     }
 }

@@ -30,6 +30,14 @@ public:
     void pushPage(ui::Page* p);
     void popPage();
 
+    template <typename Fn>
+    void mutateUiState(Fn fn) {
+        if (!dm_) return;
+        dm_->lockState();
+        fn();
+        dm_->unlockState();
+    }
+
     // Non-blocking render request. Multiple calls coalesce into a single
     // render of the latest page state.
     void requestRender() { requestRender(modules::RefreshMode::Partial); }

@@ -27,6 +27,8 @@ private:
 
     ButtonState btn_[3];
     QueueHandle_t queue_ = nullptr;
+    uint32_t overwrittenCount_ = 0;
+    uint32_t droppedCount_ = 0;
 
     void emit(app::InputEvent e);
     void onButtonEdge(uint8_t idx, bool pressed);

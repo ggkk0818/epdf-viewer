@@ -26,25 +26,25 @@ void MainPage::onEvent(::app::InputEvent e, ::app::AppController& app) {
     uint8_t selectedIdx = 0;
     bool openPage = false;
 
-    app.display().lockState();
-    switch (e) {
-        case ::app::InputEvent::UpLeft:
-            idx_ = (idx_ + ITEM_COUNT - 1) % ITEM_COUNT;
-            changed = true;
-            break;
-        case ::app::InputEvent::DownRight:
-            idx_ = (idx_ + 1) % ITEM_COUNT;
-            changed = true;
-            break;
-        case ::app::InputEvent::Enter:
-            selectedIdx = idx_;
-            openPage = true;
-            break;
-        case ::app::InputEvent::Back:
-            break;
-        default: break;
-    }
-    app.display().unlockState();
+    app.mutateUiState([&] {
+        switch (e) {
+            case ::app::InputEvent::UpLeft:
+                idx_ = (idx_ + ITEM_COUNT - 1) % ITEM_COUNT;
+                changed = true;
+                break;
+            case ::app::InputEvent::DownRight:
+                idx_ = (idx_ + 1) % ITEM_COUNT;
+                changed = true;
+                break;
+            case ::app::InputEvent::Enter:
+                selectedIdx = idx_;
+                openPage = true;
+                break;
+            case ::app::InputEvent::Back:
+                break;
+            default: break;
+        }
+    });
 
     if (openPage) {
         switch (selectedIdx) {

@@ -70,7 +70,7 @@ namespace input {
 constexpr uint32_t POLL_HZ        = 50;
 constexpr uint32_t DEBOUNCE_MS    = 20;
 constexpr uint32_t LONG_PRESS_MS  = 600;
-constexpr uint32_t QUEUE_LEN      = 4;
+constexpr uint32_t QUEUE_LEN      = 16;
 
 } // namespace input
 
@@ -80,14 +80,17 @@ constexpr uint32_t INPUT_STACK   = 2048;
 constexpr uint32_t APP_STACK     = 8192;
 constexpr uint32_t BATTERY_STACK = 2048;
 constexpr uint32_t DISPLAY_STACK = 4096;
+constexpr uint32_t DOC_LOAD_STACK = 4096;
 
 constexpr UBaseType_t INPUT_PRIO    = 12;
 constexpr UBaseType_t APP_PRIO      = 10;
 constexpr UBaseType_t BATTERY_PRIO  = 5;
 constexpr UBaseType_t DISPLAY_PRIO  = 8;
+constexpr UBaseType_t DOC_LOAD_PRIO = 9;
 
 constexpr BaseType_t APP_CORE      = 1;
 constexpr BaseType_t DISPLAY_CORE  = 0;
+constexpr BaseType_t DOC_LOAD_CORE = APP_CORE;
 
 } // namespace task
 
