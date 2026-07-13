@@ -88,6 +88,7 @@ void setup() {
     }
 
     g_app.pushPage(new ui::MainPage());
+    g_display.armRendering();
 
     xTaskCreatePinnedToCore(
         &batteryTask,

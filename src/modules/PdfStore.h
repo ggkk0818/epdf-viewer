@@ -2,6 +2,7 @@
 
 #include <Arduino.h>
 #include <SD.h>
+#include <freertos/semphr.h>
 #include <vector>
 #include "../config/Config.h"
 
@@ -40,6 +41,7 @@ public:
     void begin(SdModule* sd);
 
     bool listDocs(std::vector<PdfMeta>& out);
+    void invalidateDocListCache();
 
     bool readPageViewport(const String& dirName, uint16_t pageIdx,
                           uint8_t* outBuf, size_t bufLen,
@@ -59,7 +61,12 @@ public:
     static String makePageFileName(uint16_t pageIdx);
 
 private:
+    bool refreshDocListCache(std::vector<PdfMeta>& out);
+
     SdModule* sd_ = nullptr;
+    SemaphoreHandle_t cacheLock_ = nullptr;
+    bool docsCacheValid_ = false;
+    std::vector<PdfMeta> docsCache_;
 };
 
 } // namespace modules

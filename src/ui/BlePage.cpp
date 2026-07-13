@@ -4,31 +4,52 @@
 namespace ui {
 
 void BlePage::onEnter(::app::AppController& app) {
+    app.display().lockState();
     bleOn_    = app.ble().isEnabled();
     focusIdx_ = ROW_SWITCH;
+    app.display().unlockState();
 }
 
 void BlePage::onEvent(::app::InputEvent e, ::app::AppController& app) {
+    bool changed = false;
+    bool applyBle = false;
+    bool newBleOn = false;
+    bool goBack = false;
+
+    app.display().lockState();
     switch (e) {
         case ::app::InputEvent::UpLeft:
             focusIdx_ = (focusIdx_ + ROW_COUNT - 1) % ROW_COUNT;
-            app.requestRender();
+            changed = true;
             break;
         case ::app::InputEvent::DownRight:
             focusIdx_ = (focusIdx_ + 1) % ROW_COUNT;
-            app.requestRender();
+            changed = true;
             break;
         case ::app::InputEvent::Enter:
             if (focusIdx_ == ROW_SWITCH) {
                 bleOn_ = !bleOn_;
-                app.ble().setEnabled(bleOn_);
-                app.requestRender();
+                newBleOn = bleOn_;
+                applyBle = true;
+                changed = true;
             }
             break;
         case ::app::InputEvent::Back:
-            app.popPage();
+            goBack = true;
             break;
         default: break;
+    }
+    app.display().unlockState();
+
+    if (applyBle) {
+        app.ble().setEnabled(newBleOn);
+    }
+    if (goBack) {
+        app.popPage();
+        return;
+    }
+    if (changed) {
+        app.requestRender();
     }
 }
 

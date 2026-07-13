@@ -107,23 +107,63 @@ String PdfStore::makePageFileName(uint16_t pageIdx) {
 
 void PdfStore::begin(SdModule* sd) {
     sd_ = sd;
+    if (!cacheLock_) {
+        cacheLock_ = xSemaphoreCreateMutex();
+    }
     if (sd_ && sd_->isMounted()) {
         if (!sd_->exists(cfg::fs::PDF_DIR)) {
             sd_->mkdir(cfg::fs::PDF_DIR);
         }
     }
+    invalidateDocListCache();
 }
 
 bool PdfStore::listDocs(std::vector<PdfMeta>& out) {
     if (!sd_) return false;
+    if (cacheLock_) {
+        xSemaphoreTake(cacheLock_, portMAX_DELAY);
+        if (docsCacheValid_) {
+            out = docsCache_;
+            xSemaphoreGive(cacheLock_);
+            return true;
+        }
+        xSemaphoreGive(cacheLock_);
+    }
+    return refreshDocListCache(out);
+}
+
+void PdfStore::invalidateDocListCache() {
+    if (!cacheLock_) {
+        docsCacheValid_ = false;
+        docsCache_.clear();
+        return;
+    }
+
+    xSemaphoreTake(cacheLock_, portMAX_DELAY);
+    docsCacheValid_ = false;
+    docsCache_.clear();
+    xSemaphoreGive(cacheLock_);
+}
+
+bool PdfStore::refreshDocListCache(std::vector<PdfMeta>& out) {
     std::vector<String> dirs;
     if (!sd_->listDirs(cfg::fs::PDF_DIR, dirs)) return false;
 
+    std::vector<PdfMeta> docs;
+    docs.reserve(dirs.size());
     for (const String& d : dirs) {
         PdfMeta m;
         if (!parseDirName(d, m)) continue;  // skip non-conforming dirs (e.g., legacy "example")
-        out.push_back(m);
+        docs.push_back(m);
     }
+
+    if (cacheLock_) {
+        xSemaphoreTake(cacheLock_, portMAX_DELAY);
+        docsCache_ = docs;
+        docsCacheValid_ = true;
+        xSemaphoreGive(cacheLock_);
+    }
+    out = std::move(docs);
     return true;
 }
 
@@ -214,7 +254,11 @@ bool PdfStore::deleteDoc(const String& dirName) {
     PdfMeta tmp;
     if (!parseDirName(dirName, tmp)) return false;  // refuse to delete arbitrary paths
     String path = String(cfg::fs::PDF_DIR) + "/" + dirName;
-    return sd_->rmdirRecursive(path);
+    bool ok = sd_->rmdirRecursive(path);
+    if (ok) {
+        invalidateDocListCache();
+    }
+    return ok;
 }
 
 File PdfStore::openPageFile(const String& dirName, uint16_t pageIdx, size_t& outSize) {

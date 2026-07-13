@@ -23,6 +23,10 @@ constexpr MainItem ITEMS[MainPage::ITEM_COUNT] = {
 
 void MainPage::onEvent(::app::InputEvent e, ::app::AppController& app) {
     bool changed = false;
+    uint8_t selectedIdx = 0;
+    bool openPage = false;
+
+    app.display().lockState();
     switch (e) {
         case ::app::InputEvent::UpLeft:
             idx_ = (idx_ + ITEM_COUNT - 1) % ITEM_COUNT;
@@ -33,15 +37,21 @@ void MainPage::onEvent(::app::InputEvent e, ::app::AppController& app) {
             changed = true;
             break;
         case ::app::InputEvent::Enter:
-            switch (idx_) {
-                case 0: app.pushPage(new DocListPage());    break;
-                case 1: app.pushPage(new BlePage());        break;
-                case 2: app.pushPage(new SettingsPage());   break;
-            }
+            selectedIdx = idx_;
+            openPage = true;
             break;
         case ::app::InputEvent::Back:
             break;
         default: break;
+    }
+    app.display().unlockState();
+
+    if (openPage) {
+        switch (selectedIdx) {
+            case 0: app.pushPage(new DocListPage());    return;
+            case 1: app.pushPage(new BlePage());        return;
+            case 2: app.pushPage(new SettingsPage());   return;
+        }
     }
     if (changed) app.requestRender();
 }

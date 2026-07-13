@@ -21,11 +21,6 @@ bool readFully(File& f, uint8_t* buf, size_t len) {
 } // namespace
 
 bool IconStore::begin() {
-    if (!SD.begin(cfg::pin::SD_CS)) {
-        log_w("IconStore: SD not mounted, skipping");
-        return false;
-    }
-
     File root = SD.open(cfg::fs::ICON_DIR);
     if (!root || !root.isDirectory()) {
         log_w("IconStore: icon dir missing: %s", cfg::fs::ICON_DIR);

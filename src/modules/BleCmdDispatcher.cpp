@@ -45,7 +45,7 @@ bool BleCmdDispatcher::begin(BleModule* ble, PdfStore* pdf, SdModule* sd,
     transport_ = transport;
     if (!ble_ || !pdf_ || !sd_ || !battery_ || !transport_) return false;
 
-    queue_ = xQueueCreate(cfg::ble::CMD_QUEUE_LEN, sizeof(CmdMsg));
+    queue_ = xQueueCreate(cfg::ble::CMD_QUEUE_LEN, sizeof(WorkMsg));
     return queue_ != nullptr;
 }
 
@@ -89,22 +89,79 @@ void BleCmdDispatcher::taskTrampoline(void* ctx) {
 // ---- BLE-side handlers (run on BLE host task) ----
 
 void BleCmdDispatcher::enqueueLine(const String& line) {
-    CmdMsg msg;
+    WorkMsg msg{};
+    msg.kind = WorkKind::CmdLine;
     msg.len = (line.length() > cfg::ble::MAX_CMD_LINE)
               ? cfg::ble::MAX_CMD_LINE : line.length();
-    memcpy(msg.line, line.c_str(), msg.len);
-    msg.line[msg.len] = '\0';
+    memcpy(msg.bytes, line.c_str(), msg.len);
+    msg.bytes[msg.len] = '\0';
     // Drop on overflow — App can retry.
     xQueueSend(queue_, &msg, 0);
 }
 
 void BleCmdDispatcher::onDataChunk(const uint8_t* data, size_t len) {
-    if (!transport_) return;
+    if (!transport_ || !data || len == 0) return;
+    if (len > cfg::ble::MAX_DATA_CHUNK) {
+        log_w("BLE data chunk too large: %u", (unsigned)len);
+        noteUploadQueueOverflow();
+        return;
+    }
+
+    WorkMsg msg{};
+    msg.kind = WorkKind::DataChunk;
+    msg.len  = len;
+    memcpy(msg.bytes, data, len);
+    if (xQueueSend(queue_, &msg, 0) != pdPASS) {
+        noteUploadQueueOverflow();
+    }
+}
+
+void BleCmdDispatcher::onConnect(bool connected) {
+    if (!connected) {
+        // Abort any in-flight upload/preview to release file handles and avoid
+        // leaving the session half-finished.
+        if (transport_) transport_->abort();
+        uploadDeclaredPages_ = 0;
+        uploadDirName_       = "";
+        resetUploadQueueState();
+    }
+}
+
+// ---- Work task ----
+
+void BleCmdDispatcher::run() {
+    WorkMsg msg;
+    while (true) {
+        if (xQueueReceive(queue_, &msg, portMAX_DELAY) != pdPASS) continue;
+
+        if (consumeUploadQueueOverflow()) {
+            if (transport_ && transport_->isUploading()) {
+                transport_->abort();
+            }
+            uploadDeclaredPages_ = 0;
+            uploadDirName_       = "";
+            sendSimple("upload_error", "queue_overflow");
+        }
+
+        if (msg.kind == WorkKind::CmdLine) {
+            String line(reinterpret_cast<const char*>(msg.bytes), msg.len);
+            dispatch(line);
+            continue;
+        }
+
+        handleQueuedDataChunk(msg.bytes, msg.len);
+    }
+}
+
+void BleCmdDispatcher::handleQueuedDataChunk(const uint8_t* data, size_t len) {
+    if (!transport_ || dropUploadData_) return;
+
     bool pageComplete = false;
     uint16_t pageIdx = 0;
     size_t pageBytes = 0;
     bool ok = transport_->onDataChunk(data, len, pageComplete, pageIdx, pageBytes);
     if (!ok) {
+        dropUploadData_ = true;
         sendSimple("upload_error", "session_error");
         return;
     }
@@ -117,25 +174,26 @@ void BleCmdDispatcher::onDataChunk(const uint8_t* data, size_t len) {
     }
 }
 
-void BleCmdDispatcher::onConnect(bool connected) {
-    if (!connected) {
-        // Abort any in-flight upload/preview to release file handles and avoid
-        // leaving the session half-finished.
-        if (transport_) transport_->abort();
-        uploadDeclaredPages_ = 0;
-        uploadDirName_       = "";
-    }
+void BleCmdDispatcher::noteUploadQueueOverflow() {
+    portENTER_CRITICAL(&uploadStateLock_);
+    uploadQueueOverflow_ = true;
+    dropUploadData_      = true;
+    portEXIT_CRITICAL(&uploadStateLock_);
 }
 
-// ---- Work task ----
+bool BleCmdDispatcher::consumeUploadQueueOverflow() {
+    portENTER_CRITICAL(&uploadStateLock_);
+    bool overflow = uploadQueueOverflow_;
+    uploadQueueOverflow_ = false;
+    portEXIT_CRITICAL(&uploadStateLock_);
+    return overflow;
+}
 
-void BleCmdDispatcher::run() {
-    CmdMsg msg;
-    while (true) {
-        if (xQueueReceive(queue_, &msg, portMAX_DELAY) != pdPASS) continue;
-        String line(msg.line, msg.len);
-        dispatch(line);
-    }
+void BleCmdDispatcher::resetUploadQueueState() {
+    portENTER_CRITICAL(&uploadStateLock_);
+    uploadQueueOverflow_ = false;
+    dropUploadData_      = false;
+    portEXIT_CRITICAL(&uploadStateLock_);
 }
 
 void BleCmdDispatcher::dispatch(const String& line) {
@@ -243,6 +301,9 @@ void BleCmdDispatcher::handleDelete(const JsonDocument& req, JsonDocument& resp)
     if (PdfStore::parseDirName(dirName, probe) && probe.name == name) {
         ok = pdf_->deleteDoc(dirName);
     }
+    if (ok) {
+        sd_->invalidateStatsCache();
+    }
     data["status"] = ok ? "ok" : "error";
     resp["cmd"]    = "delete_resp";
 }
@@ -279,6 +340,7 @@ void BleCmdDispatcher::handleUploadStart(const JsonDocument& req, JsonDocument& 
     resp["status"] = uploadStartStatusStr(result);
 
     if (result == BleDataTransport::UploadStartResult::Ready) {
+        resetUploadQueueState();
         uploadDeclaredPages_ = pages;
         uploadDirName_       = dirName;
     }
@@ -304,6 +366,12 @@ void BleCmdDispatcher::handleUploadEnd(JsonDocument& resp) {
     resp["pages_received"] = received;
     resp["pages_declared"] = uploadDeclaredPages_;
 
+    if (result != BleDataTransport::UploadEndResult::NotActive) {
+        pdf_->invalidateDocListCache();
+        sd_->invalidateStatsCache();
+    }
+
+    resetUploadQueueState();
     uploadDeclaredPages_ = 0;
     uploadDirName_       = "";
 }

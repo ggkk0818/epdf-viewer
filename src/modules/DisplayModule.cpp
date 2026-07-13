@@ -58,9 +58,22 @@ void DisplayModule::requestRender(RefreshMode mode) {
         pendingMode_ = mode;
     }
     pending_ = true;
+    bool renderArmed = renderArmed_;
     portEXIT_CRITICAL(&spinlock_);
 
-    if (task_) {
+    if (task_ && renderArmed) {
+        xTaskNotifyGive(task_);
+    }
+}
+
+void DisplayModule::armRendering() {
+    bool shouldNotify = false;
+    portENTER_CRITICAL(&spinlock_);
+    renderArmed_ = true;
+    shouldNotify = pending_;
+    portEXIT_CRITICAL(&spinlock_);
+
+    if (shouldNotify && task_) {
         xTaskNotifyGive(task_);
     }
 }

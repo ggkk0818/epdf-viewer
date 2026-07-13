@@ -27,6 +27,7 @@ public:
     // before the previous render completes, only the latest state is drawn.
     // If any intermediate request asked for Full, the next render is Full.
     void requestRender(RefreshMode mode);
+    void armRendering();
 
     // Register the callback that draws the current page into the GxEPD2
     // buffer. Called on the DisplayModule task with the state lock held.
@@ -62,6 +63,7 @@ private:
     // Concurrent state, protected by spinlock_.
     volatile RefreshMode    pendingMode_ = RefreshMode::Partial;
     volatile bool           pending_     = false;
+    volatile bool           renderArmed_ = false;
 
     bool                    ready_ = false;
 };

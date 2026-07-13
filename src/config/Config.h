@@ -110,6 +110,7 @@ constexpr uint16_t CONN_INT_MAX    = 0x20;  // 40ms
 constexpr uint16_t CONN_LATENCY    = 0;
 constexpr uint16_t CONN_TIMEOUT    = 400;   // 4s (units of 10ms)
 constexpr size_t   MAX_CMD_LINE    = 256;   // JSON cmd line buffer
+constexpr size_t   MAX_DATA_CHUNK  = 512;   // queued BLE write payload upper bound
 
 // BLE-side work task (must not run on BLE host task — SD writes would block it).
 constexpr uint32_t WORK_STACK      = 8192;

@@ -30,22 +30,43 @@ constexpr uint16_t BTN_W          = (DIALOG_W - PAD_X * 2 - BTN_GAP) / 2;
 } // namespace
 
 void ConfirmDialog::onEvent(::app::InputEvent e, ::app::AppController& app) {
+    bool changed = false;
+    bool confirm = false;
+    ConfirmCallback cb = nullptr;
+    void* cbCtx = nullptr;
+    bool closeDialog = false;
+
+    app.display().lockState();
     switch (e) {
         case ::app::InputEvent::UpLeft:
         case ::app::InputEvent::DownRight:
             focusConfirm_ = !focusConfirm_;
-            app.requestRender();
+            changed = true;
             break;
         case ::app::InputEvent::Enter:
             if (focusConfirm_ && onConfirm_) {
-                onConfirm_(app, ctx_);
+                confirm = true;
+                cb = onConfirm_;
+                cbCtx = ctx_;
             }
-            app.popPage();
+            closeDialog = true;
             break;
         case ::app::InputEvent::Back:
-            app.popPage();
+            closeDialog = true;
             break;
         default: break;
+    }
+    app.display().unlockState();
+
+    if (changed) {
+        app.requestRender();
+        return;
+    }
+    if (confirm && cb) {
+        cb(app, cbCtx);
+    }
+    if (closeDialog) {
+        app.popPage();
     }
 }
 

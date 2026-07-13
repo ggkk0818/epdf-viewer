@@ -37,10 +37,24 @@ private:
     // to detect partial uploads).
     uint16_t          uploadDeclaredPages_ = 0;
     String            uploadDirName_;
+    volatile bool     uploadQueueOverflow_ = false;
+    volatile bool     dropUploadData_      = false;
+    portMUX_TYPE      uploadStateLock_     = portMUX_INITIALIZER_UNLOCKED;
 
-    struct CmdMsg {
-        char   line[cfg::ble::MAX_CMD_LINE + 1];
+    enum class WorkKind : uint8_t {
+        CmdLine,
+        DataChunk,
+    };
+
+    static constexpr size_t WORK_MSG_BYTES =
+        (cfg::ble::MAX_CMD_LINE + 1 > cfg::ble::MAX_DATA_CHUNK)
+        ? (cfg::ble::MAX_CMD_LINE + 1)
+        : cfg::ble::MAX_DATA_CHUNK;
+
+    struct WorkMsg {
+        WorkKind kind;
         size_t len;
+        uint8_t bytes[WORK_MSG_BYTES];
     };
 
     static void cmdLineTrampoline(const String& line, void* ctx);
@@ -52,6 +66,10 @@ private:
     void onDataChunk(const uint8_t* data, size_t len);
     void onConnect(bool connected);
     void run();
+    void handleQueuedDataChunk(const uint8_t* data, size_t len);
+    void noteUploadQueueOverflow();
+    bool consumeUploadQueueOverflow();
+    void resetUploadQueueState();
 
     void dispatch(const String& line);
     void handleGetDeviceInfo(JsonDocument& resp);

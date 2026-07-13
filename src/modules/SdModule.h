@@ -3,6 +3,7 @@
 #include <Arduino.h>
 #include <FS.h>
 #include <SD.h>
+#include <freertos/FreeRTOS.h>
 #include <vector>
 
 namespace modules {
@@ -23,13 +24,20 @@ public:
     // Remove a directory and everything inside it (files + subdirs).
     bool rmdirRecursive(const String& path);
 
-    uint64_t totalBytes() const;
-    uint64_t usedBytes() const;
+    uint64_t totalBytes();
+    uint64_t usedBytes();
+    void invalidateStatsCache();
 
     bool isMounted() const { return mounted_; }
 
 private:
+    void refreshStatsCache();
+
     bool mounted_ = false;
+    portMUX_TYPE statsLock_ = portMUX_INITIALIZER_UNLOCKED;
+    bool statsValid_ = false;
+    uint64_t cachedTotalBytes_ = 0;
+    uint64_t cachedUsedBytes_ = 0;
 };
 
 } // namespace modules

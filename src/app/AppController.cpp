@@ -68,13 +68,13 @@ void AppController::run() {
 }
 
 void AppController::pushPage(ui::Page* p) {
-    // Brief lock: just the stack push so a concurrent draw always sees a
-    // valid top page. onEnter runs unlocked (it may do slow SD reads).
+    p->onEnter(*this);
+
+    // Publish the page only after onEnter has initialized the state that
+    // render() observes.
     dm_->lockState();
     stack_.push(p);
     dm_->unlockState();
-
-    p->onEnter(*this);
     requestRender(modules::RefreshMode::Full);
 }
 

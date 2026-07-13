@@ -33,6 +33,7 @@ bool SdModule::begin() {
     }
     log_i("SD mounted, type=%u, size=%llu MB", cardType, (uint64_t)SD.cardSize() / (1024 * 1024));
     mounted_ = true;
+    invalidateStatsCache();
     return true;
 }
 
@@ -108,12 +109,16 @@ bool SdModule::exists(const String& path) {
 bool SdModule::mkdir(const String& path) {
     if (!mounted_) return false;
     if (SD.exists(path)) return true;
-    return SD.mkdir(path);
+    bool ok = SD.mkdir(path);
+    if (ok) invalidateStatsCache();
+    return ok;
 }
 
 bool SdModule::removeFile(const String& path) {
     if (!mounted_) return false;
-    return SD.remove(path);
+    bool ok = SD.remove(path);
+    if (ok) invalidateStatsCache();
+    return ok;
 }
 
 bool SdModule::rmdirRecursive(const String& path) {
@@ -164,17 +169,65 @@ bool SdModule::rmdirRecursive(const String& path) {
         log_w("rmdirRecursive: failed to remove dir %s", path.c_str());
         return false;
     }
+    invalidateStatsCache();
     return true;
 }
 
-uint64_t SdModule::totalBytes() const {
-    if (!mounted_) return 0;
-    return SD.totalBytes();
+void SdModule::invalidateStatsCache() {
+    portENTER_CRITICAL(&statsLock_);
+    statsValid_ = false;
+    portEXIT_CRITICAL(&statsLock_);
 }
 
-uint64_t SdModule::usedBytes() const {
+void SdModule::refreshStatsCache() {
+    if (!mounted_) return;
+
+    uint64_t total = SD.totalBytes();
+    uint64_t used = SD.usedBytes();
+
+    portENTER_CRITICAL(&statsLock_);
+    cachedTotalBytes_ = total;
+    cachedUsedBytes_ = used;
+    statsValid_ = true;
+    portEXIT_CRITICAL(&statsLock_);
+}
+
+uint64_t SdModule::totalBytes() {
     if (!mounted_) return 0;
-    return SD.usedBytes();
+
+    bool valid;
+    uint64_t total;
+    portENTER_CRITICAL(&statsLock_);
+    valid = statsValid_;
+    total = cachedTotalBytes_;
+    portEXIT_CRITICAL(&statsLock_);
+
+    if (!valid) {
+        refreshStatsCache();
+        portENTER_CRITICAL(&statsLock_);
+        total = cachedTotalBytes_;
+        portEXIT_CRITICAL(&statsLock_);
+    }
+    return total;
+}
+
+uint64_t SdModule::usedBytes() {
+    if (!mounted_) return 0;
+
+    bool valid;
+    uint64_t used;
+    portENTER_CRITICAL(&statsLock_);
+    valid = statsValid_;
+    used = cachedUsedBytes_;
+    portEXIT_CRITICAL(&statsLock_);
+
+    if (!valid) {
+        refreshStatsCache();
+        portENTER_CRITICAL(&statsLock_);
+        used = cachedUsedBytes_;
+        portEXIT_CRITICAL(&statsLock_);
+    }
+    return used;
 }
 
 } // namespace modules
