@@ -21,6 +21,21 @@ bool DisplayModule::begin() {
     u8g2_.setForegroundColor(GxEPD_BLACK);
     u8g2_.setBackgroundColor(GxEPD_WHITE);
 
+    // Initial full-refresh white clear so the first partial-refresh render
+    // (MainPage) lands on a clean panel. Pad to full_refresh_time — display()
+    // returns as soon as BUSY deasserts, which can be before the controller
+    // has finished driving the waveform. See displayLoop() for the full
+    // rationale.
+    display_->setFullWindow();
+    display_->fillScreen(GxEPD_WHITE);
+    const uint32_t clearStart = millis();
+    display_->display(false);
+    const int32_t clearRemaining =
+        (int32_t)display_->epd2.full_refresh_time -
+        (int32_t)(millis() - clearStart);
+    if (clearRemaining > 0) {
+        vTaskDelay(pdMS_TO_TICKS(clearRemaining));
+    }
 
     stateLock_ = xSemaphoreCreateMutex();
     if (!stateLock_) {

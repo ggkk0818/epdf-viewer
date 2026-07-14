@@ -23,6 +23,7 @@ using modules::IconStore;
 using modules::PdfStore;
 using modules::BleDataTransport;
 using modules::BleCmdDispatcher;
+using modules::RefreshMode;
 
 static SdModule         g_sd;
 static DisplayModule    g_display;
@@ -87,7 +88,7 @@ void setup() {
         log_e("BleCmdDispatcher init failed");
     }
 
-    g_app.pushPage(new ui::MainPage());
+    g_app.pushPage(new ui::MainPage(), RefreshMode::Partial);
     g_display.armRendering();
 
     xTaskCreatePinnedToCore(

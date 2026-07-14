@@ -67,7 +67,7 @@ void AppController::run() {
     }
 }
 
-void AppController::pushPage(ui::Page* p) {
+void AppController::pushPage(ui::Page* p, modules::RefreshMode mode) {
     p->onEnter(*this);
 
     // Publish the page only after onEnter has initialized the state that
@@ -75,7 +75,7 @@ void AppController::pushPage(ui::Page* p) {
     mutateUiState([&] {
         stack_.push(p);
     });
-    requestRender(modules::RefreshMode::Full);
+    requestRender(mode);
 }
 
 void AppController::popPage() {

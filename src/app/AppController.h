@@ -27,7 +27,8 @@ public:
                ui::UiCommon* ui);
 
     bool start();
-    void pushPage(ui::Page* p);
+    void pushPage(ui::Page* p,
+                  modules::RefreshMode mode = modules::RefreshMode::Full);
     void popPage();
 
     template <typename Fn>
