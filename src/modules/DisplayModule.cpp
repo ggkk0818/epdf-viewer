@@ -4,16 +4,17 @@
 namespace modules {
 
 bool DisplayModule::begin() {
+    const uint32_t clearStart = millis();
     display_ = new EpdPanel(
         GxEPD2_420_GDEY042T81(
             cfg::pin::EPD_CS,
             cfg::pin::EPD_DC,
             cfg::pin::EPD_RST,
             cfg::pin::EPD_BUSY));
-    SPI.begin(cfg::pin::EPD_SCK, -1, cfg::pin::EPD_MOSI, cfg::pin::EPD_CS);
+    // SPI.begin(cfg::pin::EPD_SCK, -1, cfg::pin::EPD_MOSI, cfg::pin::EPD_CS);
     // init() 1st arg is serial_diag_bitrate (NOT SPI speed). Pass 0 so GxEPD2
     // does not re-init Serial at a different baud.
-    display_->init(0, true, 50, false);
+    display_->init(0);
     display_->setRotation(1);
     display_->setTextColor(GxEPD_BLACK);
 
@@ -26,10 +27,6 @@ bool DisplayModule::begin() {
     // returns as soon as BUSY deasserts, which can be before the controller
     // has finished driving the waveform. See displayLoop() for the full
     // rationale.
-    display_->setFullWindow();
-    display_->fillScreen(GxEPD_WHITE);
-    const uint32_t clearStart = millis();
-    display_->display(false);
     const int32_t clearRemaining =
         (int32_t)display_->epd2.full_refresh_time -
         (int32_t)(millis() - clearStart);
