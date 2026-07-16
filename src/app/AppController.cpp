@@ -109,6 +109,8 @@ void AppController::pushPage(ui::Page* p, modules::RefreshMode mode) {
 }
 
 void AppController::popPage() {
+    // Phase 1 (under lock): tear down the current top. Page::onExit never
+    // calls mutateUiState, so running it under the lock is safe.
     ui::Page* top = nullptr;
     mutateUiState([&] {
         ui::Page* p = stack_.pop();
@@ -117,14 +119,18 @@ void AppController::popPage() {
             delete p;
         }
         top = stack_.top();
-        if (top) {
-            top->onEnter(*this);
-        }
     });
 
-    if (top) {
-        requestRender(modules::RefreshMode::Full);
-    }
+    if (!top) return;
+
+    // Phase 2 (outside lock): re-enter the new top. Pages like
+    // DocListPage::onEnter call mutateUiState internally, and stateLock_
+    // is a non-recursive FreeRTOS mutex — calling onEnter under the lock
+    // self-deadlocks the app task and trips the task watchdog (reboot).
+    // Matches the onEnter-outside-lock pattern used by pushPage() and
+    // navigateToDocView().
+    top->onEnter(*this);
+    requestRender(modules::RefreshMode::Full);
 }
 
 bool AppController::requestViewOnDevice(const NavigationRequest& req) {

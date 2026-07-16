@@ -58,7 +58,7 @@ void DocViewPage::onEnter(::app::AppController& app) {
         loading_ = false;
         loadFailed_ = false;
     });
-    queueLoad(app, startPage, modules::RefreshMode::Full, false);
+    queueLoad(app, startPage, modules::RefreshMode::Partial, false);
 }
 
 void DocViewPage::onExit(::app::AppController& /*app*/) {
