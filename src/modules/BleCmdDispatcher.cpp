@@ -4,6 +4,7 @@
 #include "SdModule.h"
 #include "BatteryModule.h"
 #include "../config/Config.h"
+#include "../app/AppController.h"
 
 #include <ArduinoJson.h>
 #include <cstring>
@@ -37,13 +38,15 @@ const char* previewStartStatusStr(BleDataTransport::PreviewStartResult r) {
 } // namespace
 
 bool BleCmdDispatcher::begin(BleModule* ble, PdfStore* pdf, SdModule* sd,
-                              BatteryModule* battery, BleDataTransport* transport) {
+                              BatteryModule* battery, BleDataTransport* transport,
+                              app::AppController* app) {
     ble_       = ble;
     pdf_       = pdf;
     sd_        = sd;
     battery_   = battery;
     transport_ = transport;
-    if (!ble_ || !pdf_ || !sd_ || !battery_ || !transport_) return false;
+    app_       = app;
+    if (!ble_ || !pdf_ || !sd_ || !battery_ || !transport_ || !app_) return false;
 
     queue_ = xQueueCreate(cfg::ble::CMD_QUEUE_LEN, sizeof(WorkMsg));
     return queue_ != nullptr;
@@ -225,6 +228,8 @@ void BleCmdDispatcher::dispatch(const String& line) {
         handleUploadEnd(resp);
     } else if (strcmp(cmd, "preview") == 0) {
         handlePreview(req, resp);
+    } else if (strcmp(cmd, "view_on_device") == 0) {
+        handleViewOnDevice(req, resp);
     } else {
         sendSimple("error", "unknown_cmd");
         return;
@@ -429,6 +434,60 @@ void BleCmdDispatcher::handlePreview(const JsonDocument& req, JsonDocument& resp
     resp["width"]  = w;
     resp["height"] = h;
     resp["status"] = ok ? "ok" : "io_error";
+}
+
+void BleCmdDispatcher::handleViewOnDevice(const JsonDocument& req, JsonDocument& resp) {
+    JsonVariantConst dataIn = req["data"];
+    String name = dataIn["name"] | "";
+    String time = dataIn["time"] | "";
+    uint16_t pages = dataIn["pages"] | 0;
+    uint16_t page = dataIn["page"] | 0;
+
+    // Rebuild canonical dir name from display fields (same as preview).
+    String dirName;
+    bool parsed = false;
+    if (time.length() == 19 && pages > 0 && name.length() > 0) {
+        String t = time;
+        t[10] = '_';
+        t[13] = '-';
+        t[16] = '-';
+        char pagesStr[8];
+        snprintf(pagesStr, sizeof(pagesStr), "%03u", (unsigned)pages);
+        dirName = t + "_" + String(pagesStr) + "_" + name;
+        PdfMeta probe;
+        parsed = PdfStore::parseDirName(dirName, probe) && probe.name == name;
+    }
+
+    resp["page"] = page;
+    if (!parsed) {
+        resp["cmd"]    = "view_on_device_resp";
+        resp["status"] = "bad_dir_name";
+        return;
+    }
+    if (page >= pages) {
+        resp["cmd"]    = "view_on_device_resp";
+        resp["status"] = "out_of_range";
+        return;
+    }
+
+    // Refuse if an upload/preview/transport session is in progress — the UI
+    // navigation itself is cheap, but we don't want to fight with an active
+    // binary transfer for the same resources.
+    if (transport_ && (transport_->isUploading() || transport_->isPreviewing())) {
+        resp["cmd"]    = "view_on_device_resp";
+        resp["status"] = "busy";
+        return;
+    }
+
+    app::NavigationRequest nav{};
+    strncpy(nav.dirName, dirName.c_str(), app::NavigationRequest::MAX_DOC_NAME);
+    nav.dirName[app::NavigationRequest::MAX_DOC_NAME] = '\0';
+    nav.page = page;
+
+    bool queued = app_ && app_->requestViewOnDevice(nav);
+    resp["cmd"]    = "view_on_device_resp";
+    resp["page"]   = page;
+    resp["status"] = queued ? "ok" : "busy";
 }
 
 // ---- Helpers ----

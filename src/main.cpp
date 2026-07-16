@@ -82,7 +82,7 @@ void setup() {
     g_ui.begin(&g_display, &g_battery, &g_ble, &g_icons);
     g_app.begin(&g_display, &g_input, &g_battery, &g_ble, &g_sd, &g_pdf, &g_icons, &g_ui);
 
-    if (g_dispatcher.begin(&g_ble, &g_pdf, &g_sd, &g_battery, &g_transport)) {
+    if (g_dispatcher.begin(&g_ble, &g_pdf, &g_sd, &g_battery, &g_transport, &g_app)) {
         g_dispatcher.start();
     } else {
         log_e("BleCmdDispatcher init failed");

@@ -13,6 +13,12 @@ class PdfStore;
 class SdModule;
 class BatteryModule;
 
+} // namespace modules
+
+namespace app { class AppController; }
+
+namespace modules {
+
 // Parses JSON command lines received on the BLE cmd characteristic and
 // dispatches them to PdfStore / BatteryModule / BleDataTransport handlers.
 // Runs handlers on a dedicated work task so slow SD operations (recursive
@@ -20,7 +26,7 @@ class BatteryModule;
 class BleCmdDispatcher {
 public:
     bool begin(BleModule* ble, PdfStore* pdf, SdModule* sd, BatteryModule* battery,
-               BleDataTransport* transport);
+               BleDataTransport* transport, app::AppController* app);
     bool start();  // launches work task, registers BLE callbacks
 
 private:
@@ -29,6 +35,7 @@ private:
     SdModule*         sd_       = nullptr;
     BatteryModule*    battery_  = nullptr;
     BleDataTransport* transport_ = nullptr;
+    app::AppController* app_    = nullptr;
 
     QueueHandle_t     queue_    = nullptr;
     TaskHandle_t      task_     = nullptr;
@@ -78,6 +85,7 @@ private:
     void handleUploadStart(const JsonDocument& req, JsonDocument& resp);
     void handleUploadEnd(JsonDocument& resp);
     void handlePreview(const JsonDocument& req, JsonDocument& resp);
+    void handleViewOnDevice(const JsonDocument& req, JsonDocument& resp);
 
     void sendResponse(const JsonDocument& resp);
     void sendSimple(const char* cmd, const char* status);

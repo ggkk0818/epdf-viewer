@@ -28,10 +28,12 @@ struct DocViewPage::LoadWorkerState {
 };
 
 void DocViewPage::onEnter(::app::AppController& app) {
+    uint16_t startPage = (initialPageIdx_ < meta_.pages) ? initialPageIdx_ : 0;
+
     if (!ensureVisibleBuffer() || !startWorker(app)) {
         app.mutateUiState([&] {
-            requestedPageIdx_ = 0;
-            visiblePageIdx_ = 0;
+            requestedPageIdx_ = startPage;
+            visiblePageIdx_ = startPage;
             pageCount_ = meta_.pages;
             pageSwitchCount_ = 0;
             requestSeq_ = 0;
@@ -45,8 +47,8 @@ void DocViewPage::onEnter(::app::AppController& app) {
     }
 
     app.mutateUiState([&] {
-        requestedPageIdx_ = 0;
-        visiblePageIdx_ = 0;
+        requestedPageIdx_ = startPage;
+        visiblePageIdx_ = startPage;
         pageCount_ = meta_.pages;
         pageSwitchCount_ = 0;
         requestSeq_ = 0;
@@ -56,7 +58,7 @@ void DocViewPage::onEnter(::app::AppController& app) {
         loading_ = false;
         loadFailed_ = false;
     });
-    queueLoad(app, 0, modules::RefreshMode::Full, false);
+    queueLoad(app, startPage, modules::RefreshMode::Full, false);
 }
 
 void DocViewPage::onExit(::app::AppController& /*app*/) {

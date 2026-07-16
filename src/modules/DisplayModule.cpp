@@ -149,7 +149,7 @@ void DisplayModule::displayLoop() {
             if (remaining > 0) {
                 vTaskDelay(pdMS_TO_TICKS(remaining));
             }
-
+            display_->powerOff();
             // If another request arrived during this pass, loop and render
             // the latest state. Otherwise wait for the next notification.
             bool more;

@@ -8,7 +8,8 @@ namespace ui {
 
 class DocViewPage : public Page {
 public:
-    explicit DocViewPage(modules::PdfMeta meta) : meta_(meta) {}
+    explicit DocViewPage(modules::PdfMeta meta, uint16_t initialPage = 0)
+        : meta_(meta), initialPageIdx_(initialPage) {}
 
     void onEnter(::app::AppController& app) override;
     void onExit(::app::AppController& app) override;
@@ -19,6 +20,7 @@ private:
     struct LoadWorkerState;
 
     modules::PdfMeta meta_;
+    uint16_t initialPageIdx_ = 0;
     uint16_t requestedPageIdx_ = 0;
     uint16_t visiblePageIdx_ = 0;
     uint16_t pageCount_ = 0;
