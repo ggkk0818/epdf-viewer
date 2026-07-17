@@ -97,7 +97,7 @@ void AppController::run() {
     }
 }
 
-void AppController::pushPage(ui::Page* p, modules::RefreshMode mode) {
+void AppController::pushPage(ui::Page* p) {
     p->onEnter(*this);
 
     // Publish the page only after onEnter has initialized the state that
@@ -105,7 +105,7 @@ void AppController::pushPage(ui::Page* p, modules::RefreshMode mode) {
     mutateUiState([&] {
         stack_.push(p);
     });
-    requestRender(mode);
+    requestRender();
 }
 
 void AppController::popPage() {
@@ -130,7 +130,7 @@ void AppController::popPage() {
     // Matches the onEnter-outside-lock pattern used by pushPage() and
     // navigateToDocView().
     top->onEnter(*this);
-    requestRender(modules::RefreshMode::Full);
+    requestRender();
 }
 
 bool AppController::requestViewOnDevice(const NavigationRequest& req) {
@@ -182,7 +182,34 @@ void AppController::navigateToDocView(const NavigationRequest& req) {
         stack_.push(view);
     });
 
-    requestRender(modules::RefreshMode::Full);
+    requestRender();
+}
+
+void AppController::requestRender() {
+    if (!dm_) return;
+
+    // Read the top page's score under stateLock_ so we don't race with
+    // push/pop/delete in the app task. (docLoadTask reaches us here without
+    // holding stateLock_, so an unlocked read of stack_.top() could observe
+    // a freed Page*.)
+    uint8_t score = 0;
+    dm_->lockState();
+    ui::Page* top = stack_.top();
+    if (top) score = top->refreshImpactScore();
+    dm_->unlockState();
+
+    modules::RefreshMode mode;
+    portENTER_CRITICAL(&refreshScoreLock_);
+    refreshScore_ += score;
+    if (refreshScore_ > 100) {
+        mode = modules::RefreshMode::Full;
+        refreshScore_ = 0;
+    } else {
+        mode = modules::RefreshMode::Partial;
+    }
+    portEXIT_CRITICAL(&refreshScoreLock_);
+
+    dm_->requestRender(mode);
 }
 
 } // namespace app

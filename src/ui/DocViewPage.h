@@ -15,6 +15,7 @@ public:
     void onExit(::app::AppController& app) override;
     void onEvent(::app::InputEvent e, ::app::AppController& app) override;
     void render(modules::DisplayModule& dm, UiCommon& ui) override;
+    uint8_t refreshImpactScore() const override { return 5; }
 
 private:
     struct LoadWorkerState;
@@ -24,7 +25,6 @@ private:
     uint16_t requestedPageIdx_ = 0;
     uint16_t visiblePageIdx_ = 0;
     uint16_t pageCount_ = 0;
-    uint16_t pageSwitchCount_ = 0;
     uint32_t requestSeq_ = 0;
     uint8_t* visibleBuf_ = nullptr;
     uint16_t visiblePageW_ = 0;
@@ -39,7 +39,6 @@ private:
     bool startWorker(::app::AppController& app);
     void queueLoad(::app::AppController& app,
                    uint16_t newIdx,
-                   modules::RefreshMode mode,
                    bool publishRender = true);
     void commitLoadedPage(uint32_t requestSeq,
                           uint16_t pageIdx,

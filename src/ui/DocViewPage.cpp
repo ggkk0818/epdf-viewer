@@ -7,7 +7,6 @@ namespace ui {
 
 namespace {
 
-constexpr uint16_t FULL_REFRESH_INTERVAL = 20;
 constexpr int16_t LOADING_TEXT_X = 44;
 constexpr int16_t LOADING_TEXT_Y = cfg::display::CONTENT_Y + 40;
 constexpr int16_t ERROR_TEXT_X = 40;
@@ -23,7 +22,6 @@ struct DocViewPage::LoadWorkerState {
     uint8_t* stagingBuf = nullptr;
     uint16_t pendingPageIdx = 0;
     uint32_t pendingSeq = 0;
-    modules::RefreshMode pendingMode = modules::RefreshMode::Partial;
     bool stopRequested = false;
 };
 
@@ -35,7 +33,6 @@ void DocViewPage::onEnter(::app::AppController& app) {
             requestedPageIdx_ = startPage;
             visiblePageIdx_ = startPage;
             pageCount_ = meta_.pages;
-            pageSwitchCount_ = 0;
             requestSeq_ = 0;
             visiblePageW_ = 0;
             visiblePageH_ = 0;
@@ -50,7 +47,6 @@ void DocViewPage::onEnter(::app::AppController& app) {
         requestedPageIdx_ = startPage;
         visiblePageIdx_ = startPage;
         pageCount_ = meta_.pages;
-        pageSwitchCount_ = 0;
         requestSeq_ = 0;
         visiblePageW_ = 0;
         visiblePageH_ = 0;
@@ -58,7 +54,7 @@ void DocViewPage::onEnter(::app::AppController& app) {
         loading_ = false;
         loadFailed_ = false;
     });
-    queueLoad(app, startPage, modules::RefreshMode::Partial, false);
+    queueLoad(app, startPage, false);
 }
 
 void DocViewPage::onExit(::app::AppController& /*app*/) {
@@ -129,20 +125,15 @@ void DocViewPage::render(modules::DisplayModule& dm, UiCommon& ui) {
 
 void DocViewPage::switchToPage(::app::AppController& app, uint16_t newIdx) {
     bool shouldQueue = false;
-    modules::RefreshMode mode = modules::RefreshMode::Partial;
 
     app.mutateUiState([&] {
         if (newIdx != requestedPageIdx_) {
-            uint16_t newCount = ++pageSwitchCount_;
-            mode = ((newCount % FULL_REFRESH_INTERVAL) == 0)
-                ? modules::RefreshMode::Full
-                : modules::RefreshMode::Partial;
             shouldQueue = true;
         }
     });
 
     if (shouldQueue) {
-        queueLoad(app, newIdx, mode);
+        queueLoad(app, newIdx);
     }
 }
 
@@ -196,7 +187,6 @@ bool DocViewPage::startWorker(::app::AppController& app) {
 
 void DocViewPage::queueLoad(::app::AppController& app,
                             uint16_t newIdx,
-                            modules::RefreshMode mode,
                             bool publishRender) {
     if (!worker_) {
         app.mutateUiState([&] {
@@ -207,7 +197,7 @@ void DocViewPage::queueLoad(::app::AppController& app,
             loadFailed_ = true;
         });
         if (publishRender) {
-            app.requestRender(mode);
+            app.requestRender();
         }
         return;
     }
@@ -222,11 +212,10 @@ void DocViewPage::queueLoad(::app::AppController& app,
         requestSeq_++;
         worker_->pendingPageIdx = newIdx;
         worker_->pendingSeq = requestSeq_;
-        worker_->pendingMode = mode;
     });
 
     if (publishRender) {
-        app.requestRender(mode);
+        app.requestRender();
     }
     if (worker_->task) {
         xTaskNotifyGive(worker_->task);
@@ -265,14 +254,12 @@ void DocViewPage::loaderTaskTrampoline(void* arg) {
         while (true) {
             uint32_t requestSeq = 0;
             uint16_t pageIdx = 0;
-            modules::RefreshMode mode = modules::RefreshMode::Partial;
             bool stopRequested = false;
 
             worker->app->mutateUiState([&] {
                 stopRequested = worker->stopRequested;
                 requestSeq = worker->pendingSeq;
                 pageIdx = worker->pendingPageIdx;
-                mode = worker->pendingMode;
             });
 
             if (stopRequested) {
@@ -311,7 +298,7 @@ void DocViewPage::loaderTaskTrampoline(void* arg) {
             });
 
             if (shouldRender) {
-                worker->app->requestRender(mode);
+                worker->app->requestRender();
             }
 
             lastHandledSeq = requestSeq;

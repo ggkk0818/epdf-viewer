@@ -36,8 +36,7 @@ public:
                ui::UiCommon* ui);
 
     bool start();
-    void pushPage(ui::Page* p,
-                  modules::RefreshMode mode = modules::RefreshMode::Full);
+    void pushPage(ui::Page* p);
     void popPage();
 
     template <typename Fn>
@@ -49,9 +48,11 @@ public:
     }
 
     // Non-blocking render request. Multiple calls coalesce into a single
-    // render of the latest page state.
-    void requestRender() { requestRender(modules::RefreshMode::Partial); }
-    void requestRender(modules::RefreshMode mode) { dm_->requestRender(mode); }
+    // render of the latest page state. The refresh mode (Full vs Partial) is
+    // decided by an accumulated impact score taken from the current top page:
+    // each call adds top->refreshImpactScore(), and the running total above
+    // 100 triggers a Full refresh and resets the counter.
+    void requestRender();
 
     // Thread-safe: may be called from the BLE work task. Enqueues a request
     // to rebuild the page stack as [MainPage -> DocListPage -> DocViewPage]
@@ -86,6 +87,12 @@ private:
 
     PageStack stack_;
     QueueHandle_t navQueue_ = nullptr;
+
+    // Refresh impact accumulator. Touched from appTask and docLoadTask, so
+    // guarded by refreshScoreLock_ (ISR-safe spinlock, very short critical
+    // section: read-add-compare-reset).
+    portMUX_TYPE refreshScoreLock_ = portMUX_INITIALIZER_UNLOCKED;
+    uint16_t refreshScore_ = 0;
 };
 
 } // namespace app
