@@ -138,6 +138,27 @@ bool AppController::requestViewOnDevice(const NavigationRequest& req) {
     return xQueueSend(navQueue_, &req, 0) == pdPASS;
 }
 
+bool AppController::injectInputEvent(InputEvent e) {
+    if (e == InputEvent::None || !in_) return false;
+    QueueHandle_t q = in_->eventQueue();
+    if (!q) return false;
+    if (xQueueSendToBack(q, &e, 0) == pdPASS) {
+        return true;
+    }
+    // Queue full — drop the oldest the same way InputModule::emit does, then
+    // retry. We avoid the diagnostic counters here (those belong to InputModule).
+    InputEvent dropped = InputEvent::None;
+    if (xQueueReceive(q, &dropped, 0) == pdPASS &&
+        xQueueSendToBack(q, &e, 0) == pdPASS) {
+        log_w("input queue full, remote dropped oldest event=%u latest=%u",
+              (unsigned)dropped, (unsigned)e);
+        return true;
+    }
+    log_e("input queue saturated, remote failed to enqueue event=%u",
+          (unsigned)e);
+    return false;
+}
+
 void AppController::navigateToDocView(const NavigationRequest& req) {
     // Resolve the requested document meta from the canonical dir name so we
     // reuse the exact same DocViewPage path a manual open takes.

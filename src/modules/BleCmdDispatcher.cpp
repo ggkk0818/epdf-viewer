@@ -230,6 +230,8 @@ void BleCmdDispatcher::dispatch(const String& line) {
         handlePreview(req, resp);
     } else if (strcmp(cmd, "view_on_device") == 0) {
         handleViewOnDevice(req, resp);
+    } else if (strcmp(cmd, "input_event") == 0) {
+        handleInputEvent(req, resp);
     } else {
         sendSimple("error", "unknown_cmd");
         return;
@@ -488,6 +490,24 @@ void BleCmdDispatcher::handleViewOnDevice(const JsonDocument& req, JsonDocument&
     resp["cmd"]    = "view_on_device_resp";
     resp["page"]   = page;
     resp["status"] = queued ? "ok" : "busy";
+}
+
+void BleCmdDispatcher::handleInputEvent(const JsonDocument& req, JsonDocument& resp) {
+    JsonVariantConst dataIn = req["data"];
+    const char* eventStr = dataIn["event"] | "";
+
+    app::InputEvent e = app::eventFromStr(eventStr);
+    resp["cmd"]    = "input_event_resp";
+    resp["event"]  = eventStr;
+    if (e == app::InputEvent::None) {
+        resp["status"] = "unknown_event";
+        return;
+    }
+    bool ok = app_ && app_->injectInputEvent(e);
+    // Respond "ok" whenever the event was recognized, even on queue saturation
+    // — the caller only needs to know the device parsed the event. Saturation
+    // is logged inside injectInputEvent for diagnostics.
+    resp["status"] = ok ? "ok" : "error";
 }
 
 // ---- Helpers ----

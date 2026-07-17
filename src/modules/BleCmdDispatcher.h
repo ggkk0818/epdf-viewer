@@ -86,6 +86,7 @@ private:
     void handleUploadEnd(JsonDocument& resp);
     void handlePreview(const JsonDocument& req, JsonDocument& resp);
     void handleViewOnDevice(const JsonDocument& req, JsonDocument& resp);
+    void handleInputEvent(const JsonDocument& req, JsonDocument& resp);
 
     void sendResponse(const JsonDocument& resp);
     void sendSimple(const char* cmd, const char* status);

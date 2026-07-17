@@ -60,6 +60,12 @@ public:
     // (small) navigation queue is full.
     bool requestViewOnDevice(const NavigationRequest& req);
 
+    // Thread-safe: may be called from the BLE work task. Injects an InputEvent
+    // (e.g. a remote-control gesture forwarded over BLE) onto the input queue
+    // so the app task main loop dispatches it to the current page exactly like
+    // a physical button press. Returns false only if the queue is saturated.
+    bool injectInputEvent(InputEvent e);
+
     modules::DisplayModule& display() { return *dm_; }
     modules::BatteryModule& battery() { return *bat_; }
     modules::BleModule&     ble()     { return *ble_; }
