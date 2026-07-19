@@ -78,6 +78,7 @@ public:
 private:
     static void taskTrampoline(void* arg);
     static void drawPageTrampoline(void* ctx);
+    static void onBleAutoDisabled(void* ctx);
     void run();
     void drawTopPage();
     void navigateToDocView(const NavigationRequest& req);

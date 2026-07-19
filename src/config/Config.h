@@ -121,6 +121,15 @@ constexpr UBaseType_t WORK_PRIO    = 6;
 constexpr BaseType_t WORK_CORE     = 1;
 constexpr uint32_t  CMD_QUEUE_LEN  = 8;
 
+// Auto-disable watchdog: when enabled but no peer connects for this long,
+// fully tear down the BLE stack to save power. Timer is reset on enable and
+// on disconnect; a connected peer pauses the check (connected_ == true).
+constexpr uint32_t  AUTO_DISABLE_MS   = 10U * 60U * 1000U;  // 10 min
+constexpr uint32_t  WATCHDOG_PERIOD_MS = 5000;              // poll interval
+constexpr uint32_t  WATCHDOG_STACK    = 2048;
+constexpr UBaseType_t WATCHDOG_PRIO   = 5;                   // same level as battery
+constexpr BaseType_t WATCHDOG_CORE    = 1;                   // app core, not display core
+
 } // namespace ble
 
 namespace pdf {

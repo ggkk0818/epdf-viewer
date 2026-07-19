@@ -3,6 +3,8 @@
 #include <Arduino.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
 namespace modules {
 
@@ -26,6 +28,7 @@ public:
     using CmdLineCallback   = void (*)(const String& line, void* ctx);
     using DataChunkCallback = void (*)(const uint8_t* data, size_t len, void* ctx);
     using ConnectCallback   = void (*)(bool connected, void* ctx);
+    using AutoDisabledCallback = void (*)(void* ctx);
 
     bool begin();
     void setEnabled(bool on);
@@ -49,6 +52,13 @@ public:
     }
     void onConnect(ConnectCallback cb, void* ctx) {
         connectCb_ = cb; connectCtx_ = ctx;
+    }
+    // Fired from the BLE watchdog task after the stack auto-disables itself
+    // following AUTO_DISABLE_MS of no peer connection. Always called after
+    // setEnabled(false) has completed; listeners may safely re-enable BLE.
+    void onAutoDisabled(AutoDisabledCallback cb, void* ctx) {
+        autoDisabledCb_  = cb;
+        autoDisabledCtx_ = ctx;
     }
 
 private:
@@ -77,6 +87,20 @@ private:
     void*               dataChunkCtx_ = nullptr;
     ConnectCallback     connectCb_    = nullptr;
     void*               connectCtx_   = nullptr;
+    AutoDisabledCallback autoDisabledCb_  = nullptr;
+    void*                autoDisabledCtx_ = nullptr;
+
+    // Auto-disable watchdog state. The tick is (re)seeded on enable and on
+    // disconnect; a connect implicitly pauses the check (connected_ == true
+    // skips the timeout branch). Guarded by watchdogLock_ because the watchdog
+    // task reads while the app/BLE-host tasks write.
+    TickType_t   lastNoConnTick_ = 0;
+    TaskHandle_t watchdogTask_   = nullptr;
+    portMUX_TYPE watchdogLock_   = portMUX_INITIALIZER_UNLOCKED;
+
+    void startWatchdog();
+    void watchdogLoop();
+    static void watchdogTrampoline(void* arg);
 
     // Inner-class trampolines (defined in .cpp) — keep header free of ESP-IDF
     // detail while still letting them reach back into BleModule.

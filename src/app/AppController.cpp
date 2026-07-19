@@ -31,6 +31,10 @@ void AppController::begin(modules::DisplayModule* dm,
     dm_->setDrawCallback(&AppController::drawPageTrampoline, this);
 
     navQueue_ = xQueueCreate(NAV_QUEUE_LEN, sizeof(NavigationRequest));
+
+    if (ble_) {
+        ble_->onAutoDisabled(&AppController::onBleAutoDisabled, this);
+    }
 }
 
 bool AppController::start() {
@@ -55,6 +59,13 @@ void AppController::taskTrampoline(void* arg) {
 
 void AppController::drawPageTrampoline(void* ctx) {
     static_cast<AppController*>(ctx)->drawTopPage();
+}
+
+void AppController::onBleAutoDisabled(void* ctx) {
+    // Fired from the BLE watchdog task after it tears the stack down.
+    // requestRender() guards stack_.top() with stateLock_ and the impact
+    // accumulator with refreshScoreLock_, so it is safe to call cross-task.
+    static_cast<AppController*>(ctx)->requestRender();
 }
 
 void AppController::drawTopPage() {

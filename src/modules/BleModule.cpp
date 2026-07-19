@@ -154,6 +154,7 @@ bool BleModule::begin() {
     epdfSvc_->start();
 
     initialized_ = true;
+    startWatchdog();
     log_i("BleModule ready (Battery + EPDF service, MTU target=%u)",
           (unsigned)cfg::ble::TARGET_MTU);
     return true;
@@ -177,6 +178,9 @@ void BleModule::setEnabled(bool on) {
         adv->setMaxPreferred(0x12);
         BLEDevice::startAdvertising();
         enabled_ = true;
+        portENTER_CRITICAL(&watchdogLock_);
+        lastNoConnTick_ = xTaskGetTickCount();
+        portEXIT_CRITICAL(&watchdogLock_);
         log_i("BLE advertising started");
     } else {
         end();
@@ -322,6 +326,9 @@ void BleModule::handleDisconnect() {
     lastDataNotifyStatus_ = BLECharacteristicCallbacks::Status::SUCCESS_NOTIFY;
     lastDataNotifyCode_ = 0;
     cmdLineBuf_.remove(0, cmdLineBuf_.length());
+    portENTER_CRITICAL(&watchdogLock_);
+    lastNoConnTick_ = xTaskGetTickCount();
+    portEXIT_CRITICAL(&watchdogLock_);
     log_i("BLE disconnect");
     if (connectCb_) connectCb_(false, connectCtx_);
 }
@@ -366,6 +373,50 @@ void BleModule::handleDataWrite(const uint8_t* data, size_t len) {
 void BleModule::dispatchCmdLine(const String& line) {
     if (line.length() == 0) return;
     if (cmdLineCb_) cmdLineCb_(line, cmdLineCtx_);
+}
+
+void BleModule::startWatchdog() {
+    if (watchdogTask_) return;
+    lastNoConnTick_ = xTaskGetTickCount();
+    BaseType_t ok = xTaskCreatePinnedToCore(
+        &BleModule::watchdogTrampoline,
+        "bleWatchdog",
+        cfg::ble::WATCHDOG_STACK,
+        this,
+        cfg::ble::WATCHDOG_PRIO,
+        &watchdogTask_,
+        cfg::ble::WATCHDOG_CORE);
+    if (ok != pdPASS) {
+        log_e("bleWatchdog create failed");
+        watchdogTask_ = nullptr;
+    }
+}
+
+void BleModule::watchdogTrampoline(void* arg) {
+    static_cast<BleModule*>(arg)->watchdogLoop();
+}
+
+void BleModule::watchdogLoop() {
+    const TickType_t period  = pdMS_TO_TICKS(cfg::ble::WATCHDOG_PERIOD_MS);
+    const TickType_t timeout = pdMS_TO_TICKS(cfg::ble::AUTO_DISABLE_MS);
+    while (true) {
+        vTaskDelay(period);
+
+        bool shouldDisable = false;
+        portENTER_CRITICAL(&watchdogLock_);
+        if (enabled_ && !connected_ &&
+            (xTaskGetTickCount() - lastNoConnTick_) >= timeout) {
+            shouldDisable = true;
+        }
+        portEXIT_CRITICAL(&watchdogLock_);
+
+        if (!shouldDisable) continue;
+
+        log_i("BLE auto-disable: no connection for %u ms, shutting down",
+              (unsigned)cfg::ble::AUTO_DISABLE_MS);
+        setEnabled(false);
+        if (autoDisabledCb_) autoDisabledCb_(autoDisabledCtx_);
+    }
 }
 
 } // namespace modules

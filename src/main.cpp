@@ -87,6 +87,13 @@ void setup() {
         log_e("BleCmdDispatcher init failed");
     }
 
+    // Power-on default: Bluetooth discoverable. The BLE watchdog inside
+    // BleModule will auto-disable the stack after AUTO_DISABLE_MS with no
+    // peer connection.
+    if (bleOk) {
+        g_ble.setEnabled(true);
+    }
+
     g_app.pushPage(new ui::MainPage());
     g_display.armRendering();
 
