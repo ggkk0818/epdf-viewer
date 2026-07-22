@@ -6,7 +6,7 @@ namespace modules {
 bool DisplayModule::begin() {
     const uint32_t clearStart = millis();
     display_ = new EpdPanel(
-        GxEPD2_420_GDEY042T81(
+        GxEPD2_1020_GDEM102T91(
             cfg::pin::EPD_CS,
             cfg::pin::EPD_DC,
             cfg::pin::EPD_RST,

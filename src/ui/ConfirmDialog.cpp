@@ -9,7 +9,7 @@ namespace {
 constexpr uint16_t COLOR_BG = GxEPD_WHITE;
 constexpr uint16_t COLOR_FG = GxEPD_BLACK;
 
-// Layout, in pixels. The dialog is centered in the 300x400 viewport.
+// Layout, in pixels. The dialog is centered in the 640x960 viewport.
 constexpr uint16_t DIALOG_W       = 240;
 constexpr uint16_t DIALOG_H       = 200;
 constexpr uint16_t DIALOG_X       = (cfg::display::WIDTH - DIALOG_W) / 2;

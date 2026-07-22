@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 #include <GxEPD2_BW.h>
-#include <gdey/GxEPD2_420_GDEY042T81.h>
+#include <gdem/GxEPD2_1020_GDEM102T91.h>
 #include <U8g2_for_Adafruit_GFX.h>
 #include <freertos/semphr.h>
 #include <freertos/task.h>
@@ -15,7 +15,7 @@ enum class RefreshMode : uint8_t {
 };
 
 using EpdPanel =
-    GxEPD2_BW<GxEPD2_420_GDEY042T81, GxEPD2_420_GDEY042T81::HEIGHT>;
+    GxEPD2_BW<GxEPD2_1020_GDEM102T91, GxEPD2_1020_GDEM102T91::HEIGHT>;
 
 class DisplayModule {
 public:
