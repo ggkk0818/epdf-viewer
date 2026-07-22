@@ -189,10 +189,13 @@ void OtaService::handleData(const uint8_t* data, size_t len) {
     crcAccum_    = crc32Update(crcAccum_, data, len);
 
     // Emit ack at every ACK_INTERVAL_BYTES boundary. The phone advances its
-    // sliding window off these acks.
+    // sliding window off these acks. Also emit a terminal ack when received_
+    // hits the declared total — otherwise the final sub-4KB chunk never
+    // crosses a boundary and the phone stalls waiting for _acked == total.
     const uint32_t threshold = (received_ / cfg::ota::ACK_INTERVAL_BYTES)
                                * cfg::ota::ACK_INTERVAL_BYTES;
-    if (threshold > lastAckedThresh_) {
+    const bool reachedTotal = (total_ > 0 && received_ >= total_);
+    if (threshold > lastAckedThresh_ || reachedTotal) {
         lastAckedThresh_ = threshold;
         sendAck();
     }
