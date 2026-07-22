@@ -40,7 +40,7 @@ namespace display {
 
 constexpr uint16_t WIDTH        = 640;
 constexpr uint16_t HEIGHT       = 960;
-constexpr uint16_t STATUS_H     = 20;
+constexpr uint16_t STATUS_H     = 32;
 constexpr uint16_t CONTENT_Y    = STATUS_H;
 constexpr uint16_t CONTENT_H    = HEIGHT - STATUS_H;
 constexpr uint16_t CONTENT_W    = WIDTH;
@@ -151,7 +151,7 @@ constexpr uint8_t  DIR_NAME_PREFIX_LEN  = 19;  // "yyyy-mm-dd_HH-MM-SS_"
 
 namespace version {
 
-constexpr const char* SW_VERSION = "0.1.0";
+constexpr const char* SW_VERSION = "0.2.0";
 
 } // namespace version
 
