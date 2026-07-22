@@ -40,6 +40,10 @@ public:
     bool notifyCmd(const uint8_t* data, size_t len);
     bool notifyData(const uint8_t* data, size_t len, uint32_t* outCode = nullptr);
 
+    // OTA service accessor — used by OtaService to push ack/status notifies
+    // back to the phone on the OTA control characteristic.
+    bool notifyOtaCtrl(const uint8_t* data, size_t len);
+
     bool     isConnected() const  { return connected_; }
     uint16_t negotiatedMtu() const { return mtu_; }
 
@@ -49,6 +53,14 @@ public:
     }
     void onDataChunk(DataChunkCallback cb, void* ctx) {
         dataChunkCb_ = cb; dataChunkCtx_ = ctx;
+    }
+    // OTA control-point writes (raw bytes, NOT line-buffered) and OTA data
+    // writes (raw binary stream). Registered by OtaService.
+    void onOtaCtrl(DataChunkCallback cb, void* ctx) {
+        otaCtrlCb_ = cb; otaCtrlCtx_ = ctx;
+    }
+    void onOtaData(DataChunkCallback cb, void* ctx) {
+        otaDataCb_ = cb; otaDataCtx_ = ctx;
     }
     void onConnect(ConnectCallback cb, void* ctx) {
         connectCb_ = cb; connectCtx_ = ctx;
@@ -74,9 +86,12 @@ private:
     BLEServer*          server_      = nullptr;
     BLEService*         batterySvc_  = nullptr;
     BLEService*         epdfSvc_     = nullptr;
+    BLEService*         otaSvc_      = nullptr;
     BLECharacteristic*  batteryChar_ = nullptr;
     BLECharacteristic*  cmdChar_     = nullptr;
     BLECharacteristic*  dataChar_    = nullptr;
+    BLECharacteristic*  otaCtrlChar_ = nullptr;
+    BLECharacteristic*  otaDataChar_ = nullptr;
 
     // Line accumulation for the cmd channel (JSON lines end with '\n').
     String              cmdLineBuf_;
@@ -85,6 +100,10 @@ private:
     void*               cmdLineCtx_   = nullptr;
     DataChunkCallback   dataChunkCb_  = nullptr;
     void*               dataChunkCtx_ = nullptr;
+    DataChunkCallback   otaCtrlCb_    = nullptr;
+    void*               otaCtrlCtx_   = nullptr;
+    DataChunkCallback   otaDataCb_    = nullptr;
+    void*               otaDataCtx_   = nullptr;
     ConnectCallback     connectCb_    = nullptr;
     void*               connectCtx_   = nullptr;
     AutoDisabledCallback autoDisabledCb_  = nullptr;
@@ -107,12 +126,16 @@ private:
     friend class BleServerCallbacks;
     friend class BleCmdCallbacks;
     friend class BleDataCallbacks;
+    friend class BleOtaCtrlCallbacks;
+    friend class BleOtaDataCallbacks;
 
     void handleConnect(uint16_t connHandle);
     void handleMtuChanged(uint16_t connHandle, uint16_t mtu);
     void handleDisconnect();
     void handleCmdWrite(const uint8_t* data, size_t len);
     void handleDataWrite(const uint8_t* data, size_t len);
+    void handleOtaCtrlWrite(const uint8_t* data, size_t len);
+    void handleOtaDataWrite(const uint8_t* data, size_t len);
     void handleDataSubscribe(uint16_t subValue);
     void handleDataNotifyStatus(BLECharacteristicCallbacks::Status status, uint32_t code);
     void dispatchCmdLine(const String& line);

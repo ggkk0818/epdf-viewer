@@ -10,6 +10,7 @@
 #include "modules/UploadSession.h"
 #include "modules/BleDataTransport.h"
 #include "modules/BleCmdDispatcher.h"
+#include "modules/OtaService.h"
 #include "ui/UiCommon.h"
 #include "ui/MainPage.h"
 #include "app/AppController.h"
@@ -23,6 +24,7 @@ using modules::IconStore;
 using modules::PdfStore;
 using modules::BleDataTransport;
 using modules::BleCmdDispatcher;
+using modules::OtaService;
 
 static SdModule         g_sd;
 static DisplayModule    g_display;
@@ -33,6 +35,7 @@ static IconStore        g_icons;
 static PdfStore         g_pdf;
 static BleDataTransport g_transport;
 static BleCmdDispatcher g_dispatcher;
+static OtaService       g_ota;
 static ui::UiCommon     g_ui;
 static app::AppController g_app;
 
@@ -85,6 +88,12 @@ void setup() {
         g_dispatcher.start();
     } else {
         log_e("BleCmdDispatcher init failed");
+    }
+
+    if (g_ota.begin(&g_ble) && g_ota.start()) {
+        log_i("OTA service ready");
+    } else {
+        log_e("OTA service init failed");
     }
 
     // Power-on default: Bluetooth discoverable. The BLE watchdog inside

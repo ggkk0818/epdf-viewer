@@ -25,6 +25,10 @@ const BLEUUID EPDF_SERVICE_UUID(cfg::ble::EPDF_SERVICE_UUID);
 const BLEUUID CMD_CHAR_UUID(cfg::ble::CMD_CHAR_UUID);
 const BLEUUID DATA_CHAR_UUID(cfg::ble::DATA_CHAR_UUID);
 
+const BLEUUID OTA_SERVICE_UUID(cfg::ota::OTA_SERVICE_UUID);
+const BLEUUID OTA_CTRL_CHAR_UUID(cfg::ota::OTA_CTRL_CHAR_UUID);
+const BLEUUID OTA_DATA_CHAR_UUID(cfg::ota::OTA_DATA_CHAR_UUID);
+
 constexpr uint16_t ATT_NOTIFY_OVERHEAD = 3;
 constexpr size_t GATT_MAX_VALUE_LEN = 512;
 constexpr size_t MIN_NOTIFY_PAYLOAD = 20;
@@ -111,6 +115,30 @@ public:
     }
 };
 
+// OTA control point: same shape as BleCmdCallbacks but raw bytes — no line
+// buffering. Each write is dispatched as one logical frame.
+class BleOtaCtrlCallbacks : public BLECharacteristicCallbacks {
+public:
+    void onWrite(BLECharacteristic* chr) override {
+        String v = chr->getValue();
+        if (v.length() && g_self) {
+            g_self->handleOtaCtrlWrite(reinterpret_cast<const uint8_t*>(v.c_str()), v.length());
+        }
+    }
+};
+
+// OTA data: fire-and-forget binary stream. May arrive via Write or WriteNR;
+// both land here.
+class BleOtaDataCallbacks : public BLECharacteristicCallbacks {
+public:
+    void onWrite(BLECharacteristic* chr) override {
+        String v = chr->getValue();
+        if (v.length() && g_self) {
+            g_self->handleOtaDataWrite(reinterpret_cast<const uint8_t*>(v.c_str()), v.length());
+        }
+    }
+};
+
 // ---- BleModule ----
 
 bool BleModule::begin() {
@@ -153,9 +181,30 @@ bool BleModule::begin() {
 
     epdfSvc_->start();
 
+    // --- OTA Service ---
+    // Control point: Write (with + without response) + Notify for the phone
+    // to send commands and receive ack/status. Data: same property set so the
+    // phone can use whichever write mode its BLE stack paces best.
+    otaSvc_ = server_->createService(OTA_SERVICE_UUID);
+
+    otaCtrlChar_ = otaSvc_->createCharacteristic(
+        OTA_CTRL_CHAR_UUID,
+        BLECharacteristic::PROPERTY_WRITE |
+        BLECharacteristic::PROPERTY_WRITE_NR |
+        BLECharacteristic::PROPERTY_NOTIFY);
+    otaCtrlChar_->setCallbacks(new BleOtaCtrlCallbacks());
+
+    otaDataChar_ = otaSvc_->createCharacteristic(
+        OTA_DATA_CHAR_UUID,
+        BLECharacteristic::PROPERTY_WRITE |
+        BLECharacteristic::PROPERTY_WRITE_NR);
+    otaDataChar_->setCallbacks(new BleOtaDataCallbacks());
+
+    otaSvc_->start();
+
     initialized_ = true;
     startWatchdog();
-    log_i("BleModule ready (Battery + EPDF service, MTU target=%u)",
+    log_i("BleModule ready (Battery + EPDF + OTA service, MTU target=%u)",
           (unsigned)cfg::ble::TARGET_MTU);
     return true;
 }
@@ -172,6 +221,7 @@ void BleModule::setEnabled(bool on) {
         }
         BLEAdvertising* adv = BLEDevice::getAdvertising();
         adv->addServiceUUID(EPDF_SERVICE_UUID);
+        adv->addServiceUUID(OTA_SERVICE_UUID);
         adv->addServiceUUID(BATTERY_SERVICE_UUID);
         adv->setScanResponse(true);
         adv->setMinPreferred(0x06);  // helps iPhone discovery
@@ -217,9 +267,12 @@ void BleModule::end() {
     server_      = nullptr;
     batterySvc_  = nullptr;
     epdfSvc_     = nullptr;
+    otaSvc_      = nullptr;
     batteryChar_ = nullptr;
     cmdChar_     = nullptr;
     dataChar_    = nullptr;
+    otaCtrlChar_ = nullptr;
+    otaDataChar_ = nullptr;
 
     initialized_ = false;
     connected_   = false;
@@ -285,6 +338,26 @@ bool BleModule::notifyData(const uint8_t* data, size_t len, uint32_t* outCode) {
     dataChar_->notify();
     if (outCode) *outCode = lastDataNotifyCode_;
     return lastDataNotifyStatus_ == BLECharacteristicCallbacks::Status::SUCCESS_NOTIFY;
+}
+
+bool BleModule::notifyOtaCtrl(const uint8_t* data, size_t len) {
+    if (!otaCtrlChar_ || !connected_ || !data || len == 0) {
+        return false;
+    }
+    // OTA control notifies are tiny (5 bytes typical) so chunking rarely kicks
+    // in, but reuse the same payload-size logic as notifyCmd for safety.
+    const size_t maxPayload = notifyPayloadSize(mtu_, GATT_MAX_VALUE_LEN);
+    for (size_t offset = 0; offset < len; offset += maxPayload) {
+        const size_t chunkLen = ((len - offset) < maxPayload)
+                                ? (len - offset)
+                                : maxPayload;
+        otaCtrlChar_->setValue((uint8_t*)(data + offset), chunkLen);
+        otaCtrlChar_->notify();
+        if (offset + chunkLen < len) {
+            vTaskDelay(pdMS_TO_TICKS(CMD_NOTIFY_SEND_DELAY_MS));
+        }
+    }
+    return true;
 }
 
 void BleModule::handleConnect(uint16_t connHandle) {
@@ -368,6 +441,16 @@ void BleModule::handleCmdWrite(const uint8_t* data, size_t len) {
 void BleModule::handleDataWrite(const uint8_t* data, size_t len) {
     if (!data || len == 0) return;
     if (dataChunkCb_) dataChunkCb_(data, len, dataChunkCtx_);
+}
+
+void BleModule::handleOtaCtrlWrite(const uint8_t* data, size_t len) {
+    if (!data || len == 0) return;
+    if (otaCtrlCb_) otaCtrlCb_(data, len, otaCtrlCtx_);
+}
+
+void BleModule::handleOtaDataWrite(const uint8_t* data, size_t len) {
+    if (!data || len == 0) return;
+    if (otaDataCb_) otaDataCb_(data, len, otaDataCtx_);
 }
 
 void BleModule::dispatchCmdLine(const String& line) {

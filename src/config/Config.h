@@ -149,6 +149,54 @@ constexpr uint8_t  DIR_NAME_PREFIX_LEN  = 19;  // "yyyy-mm-dd_HH-MM-SS_"
 
 } // namespace pdf
 
+namespace ota {
+
+// GATT Service / Characteristic UUIDs for the OTA service. Separate from the
+// EPDF service (0xFFE0) so OTA traffic does not collide with the JSON cmd
+// protocol or PDF data stream.
+constexpr const char* OTA_SERVICE_UUID     = "0000ff00-0000-1000-8000-00805f9b34fb";
+constexpr const char* OTA_CTRL_CHAR_UUID   = "0000ff01-0000-1000-8000-00805f9b34fb";
+constexpr const char* OTA_DATA_CHAR_UUID   = "0000ff02-0000-1000-8000-00805f9b34fb";
+
+// Flow control: ESP32 sends a 0x10 ack every ACK_INTERVAL_BYTES written so the
+// phone can advance its sliding window. Window size is enforced on the phone
+// side; this constant only sets how often the device reports progress.
+constexpr uint32_t ACK_INTERVAL_BYTES = 4096;
+
+// Worker task that drains the OTA queue. Flash erase/write happens here so the
+// NimBLE host task is never blocked.
+constexpr uint32_t  WORK_STACK  = 8192;
+constexpr UBaseType_t WORK_PRIO = 6;     // same level as BLE work task
+constexpr BaseType_t WORK_CORE  = 1;     // app core, not display core
+constexpr size_t    QUEUE_LEN   = 16;    // 16 * ~512B = 8KB buffer
+constexpr size_t    MAX_CHUNK   = 512;
+
+// Protocol byte values — phone and ESP32 must agree on these exactly.
+namespace cmd {
+constexpr uint8_t START  = 0x01;   // payload: 4-byte LE firmware size
+constexpr uint8_t PAUSE  = 0x02;   // optional, not strictly enforced
+constexpr uint8_t RESUME = 0x03;   // optional, not strictly enforced
+constexpr uint8_t END    = 0x04;   // payload: 4-byte LE CRC32 of firmware
+constexpr uint8_t REBOOT = 0x05;
+} // namespace cmd
+
+namespace status {
+constexpr uint8_t ACK       = 0x10;   // payload: 4-byte LE bytes-written-so-far
+constexpr uint8_t START_FAIL = 0x11;  // payload: 1-byte error code
+constexpr uint8_t CRC_FAIL  = 0x12;
+constexpr uint8_t CRC_OK    = 0x13;
+} // namespace status
+
+namespace err {
+constexpr uint8_t NONE          = 0x00;
+constexpr uint8_t ALREADY_ACTIVE = 0x01;
+constexpr uint8_t BEGIN_FAILED  = 0x02;  // Update.begin() rejected size
+constexpr uint8_t WRITE_FAILED  = 0x03;  // Update.write() returned short
+constexpr uint8_t UNEXPECTED    = 0x04;  // data arrived without START
+} // namespace err
+
+} // namespace ota
+
 namespace version {
 
 constexpr const char* SW_VERSION = "0.2.0";
