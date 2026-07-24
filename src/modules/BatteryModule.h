@@ -51,6 +51,7 @@ private:
     int32_t  coulombMAs_    = 0;
     uint32_t lastTickMs_    = 0;
     uint32_t staticSinceMs_ = 0;
+    uint16_t lastACR_       = 0x7FFF;   // LTC2944 accumulated-charge baseline (chip default)
 
     // Upper-layer notify callback.
     BatteryNotifyCb notifyCb_  = nullptr;

@@ -65,9 +65,10 @@ constexpr uint32_t SAMPLE_HZ             = 1;
 // Sense resistor and full-scale (LTC2944 datasheet: differential ±64 mV).
 constexpr uint16_t SENSE_FS_MV           = 64;
 constexpr uint16_t R_SENSE_MOHM          = 50;
+constexpr uint16_t M_PRESCALER           = 1024;   // ACR charge prescaler
 
 // Battery spec (single 4.2V Li-ion cell, nominal 3.7V).
-constexpr uint16_t CAPACITY_MAH          = 2000;
+constexpr uint16_t CAPACITY_MAH          = 4000;
 constexpr uint16_t V_FULL_MV             = 4200;
 constexpr uint16_t V_FULL_THRESH_MV      = 4150;
 constexpr uint16_t V_EMPTY_MV            = 3250;

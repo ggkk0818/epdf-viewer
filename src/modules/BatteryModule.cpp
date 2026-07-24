@@ -30,7 +30,18 @@ constexpr OcvPoint kOcvTable[] = {
 
 constexpr uint8_t  kI2cAddr        = cfg::battery::I2C_ADDR;
 constexpr uint32_t kVoltageFsMv    = 70800;   // LTC2944 voltage full-scale
-constexpr uint32_t kCapacityMAs    = (uint32_t)cfg::battery::CAPACITY_MAH * 3600;  // 1 mAh = 3600 mA·ms
+
+// Battery capacity in milliamp-seconds. 1 mAh = 3600 mA·s.
+constexpr uint32_t kCapacityMAs    = (uint32_t)cfg::battery::CAPACITY_MAH * 3600;
+
+// LTC2944 ACR LSB in mA·s.
+// Datasheet: Q_LSB(mAh) = 0.340 × (50mΩ / Rsense) × (M / 4096)
+//   → Q_LSB(mA·s) = 0.340 × 3600 × 50 × M / (Rsense × 4096) = 61200 × M / (Rsense × 4096)
+constexpr uint32_t ACR_LSB_MAS =
+    (uint32_t)61200 * cfg::battery::M_PRESCALER
+    / ((uint32_t)cfg::battery::R_SENSE_MOHM * 4096);
+static_assert(cfg::battery::M_PRESCALER == 1024,
+              "CONTROL_SCAN_M1024 encodes M=1024; update both together if M changes");
 
 uint16_t codeToVoltageMv(uint16_t code) {
     return (uint16_t)((uint64_t)code * kVoltageFsMv / 65535);
@@ -76,14 +87,16 @@ bool BatteryModule::begin() {
         return false;
     }
 
-    uint16_t vCode = 0, iCode = 0, tCode = 0;
+    uint16_t vCode = 0, iCode = 0, tCode = 0, acrCode = 0;
     readReg16(cfg::battery::REG_VOLT_HI, vCode);
     readReg16(cfg::battery::REG_CURR_HI, iCode);
     readReg16(cfg::battery::REG_TEMP_HI, tCode);
+    readReg16(cfg::battery::REG_ACR_HI,  acrCode);
 
     voltageMv_ = codeToVoltageMv(vCode);
     currentMa_ = codeToCurrentMa(iCode);
     tempCx10_  = codeToTempCx10(tCode);
+    lastACR_   = acrCode;   // baseline; first tick() will see delta = 0
 
     uint8_t initPct = ocvToPercent(voltageMv_);
     percent_    = initPct;
@@ -136,11 +149,12 @@ void BatteryModule::taskTrampoline(void* arg) {
 }
 
 void BatteryModule::tick() {
-    uint16_t vCode = 0, iCode = 0, tCode = 0;
-    bool vOk = readReg16(cfg::battery::REG_VOLT_HI, vCode);
-    bool iOk = readReg16(cfg::battery::REG_CURR_HI, iCode);
-    bool tOk = readReg16(cfg::battery::REG_TEMP_HI, tCode);
-    if (!vOk || !iOk) return;  // keep last cache on transient I2C failure
+    uint16_t vCode = 0, iCode = 0, tCode = 0, acrCode = 0;
+    bool vOk   = readReg16(cfg::battery::REG_VOLT_HI, vCode);
+    bool iOk   = readReg16(cfg::battery::REG_CURR_HI, iCode);
+    bool tOk   = readReg16(cfg::battery::REG_TEMP_HI, tCode);
+    bool acrOk = readReg16(cfg::battery::REG_ACR_HI,  acrCode);
+    if (!vOk || !iOk || !acrOk) return;  // keep last cache on transient I2C failure
 
     const uint16_t vMv   = codeToVoltageMv(vCode);
     const int16_t  iMa   = codeToCurrentMa(iCode);
@@ -150,7 +164,15 @@ void BatteryModule::tick() {
     const uint32_t dt  = now - lastTickMs_;
     lastTickMs_ = now;
 
-    coulombMAs_ += (int32_t)iMa * (int32_t)dt;
+    // Coulomb integration via LTC2944 ACR (hardware-integrated charge).
+    // ACR accumulates continuously independent of MCU sleep/I2C reads, so
+    // deltas captured across light-sleep windows reflect real net charge.
+    // uint16_t subtraction handles 16-bit wraparound; cast to int16_t
+    // recovers signed direction (charging → positive, discharging → negative).
+    uint16_t rawDelta = acrCode - lastACR_;
+    int16_t  deltaLsb = (int16_t)rawDelta;
+    coulombMAs_ += (int32_t)deltaLsb * (int32_t)ACR_LSB_MAS;
+    lastACR_ = acrCode;
 
     if (iMa <  cfg::battery::CURRENT_IDLE_THRESH_MA &&
         iMa > -cfg::battery::CURRENT_IDLE_THRESH_MA) {
