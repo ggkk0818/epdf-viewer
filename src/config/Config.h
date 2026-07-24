@@ -56,12 +56,40 @@ constexpr uint32_t SPI_HZ = 4000000;
 
 namespace battery {
 
-constexpr uint8_t  I2C_ADDR      = 0x0B;
-constexpr uint8_t  REG_RSOC      = 0x09;
-constexpr uint8_t  REG_VOLTAGE   = 0x0A;
-constexpr uint8_t  REG_TEMP      = 0x08;
-constexpr uint8_t  REG_POWER     = 0x05;
-constexpr uint32_t SAMPLE_HZ     = 1;
+// LTC2944 I2C address (7-bit, fixed by ADI).
+constexpr uint8_t  I2C_ADDR              = 0x64;
+
+// Sampling task cadence.
+constexpr uint32_t SAMPLE_HZ             = 1;
+
+// Sense resistor and full-scale (LTC2944 datasheet: differential ±64 mV).
+constexpr uint16_t SENSE_FS_MV           = 64;
+constexpr uint16_t R_SENSE_MOHM          = 50;
+
+// Battery spec (single 4.2V Li-ion cell, nominal 3.7V).
+constexpr uint16_t CAPACITY_MAH          = 2000;
+constexpr uint16_t V_FULL_MV             = 4200;
+constexpr uint16_t V_FULL_THRESH_MV      = 4150;
+constexpr uint16_t V_EMPTY_MV            = 3250;
+
+// PowerState thresholds.
+constexpr int16_t  CURRENT_IDLE_THRESH_MA = 20;
+constexpr uint32_t STATIC_CALIB_MS        = 30000;  // 30s rest → trust OCV
+
+// LTC2944 registers.
+constexpr uint8_t  REG_STATUS            = 0x00;
+constexpr uint8_t  REG_CONTROL           = 0x01;
+constexpr uint8_t  REG_ACR_HI            = 0x02;
+constexpr uint8_t  REG_ACR_LO            = 0x03;
+constexpr uint8_t  REG_VOLT_HI           = 0x08;
+constexpr uint8_t  REG_VOLT_LO           = 0x09;
+constexpr uint8_t  REG_CURR_HI           = 0x0E;
+constexpr uint8_t  REG_CURR_LO           = 0x0F;
+constexpr uint8_t  REG_TEMP_HI           = 0x14;
+constexpr uint8_t  REG_TEMP_LO           = 0x15;
+
+// Control word: ADC mode=Scan (10), M=1024 (101), ALCC=off (00), !shutdown (0).
+constexpr uint8_t  CONTROL_SCAN_M1024    = 0xA8;
 
 } // namespace battery
 

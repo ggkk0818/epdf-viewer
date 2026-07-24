@@ -5,18 +5,48 @@ namespace modules {
 
 namespace {
 
-uint8_t crc8(const uint8_t* data, size_t len) {
-    uint8_t crc = 0;
-    for (size_t i = 0; i < len; i++) {
-        crc ^= data[i];
-        for (int b = 0; b < 8; b++) {
-            crc = (crc & 0x80) ? ((crc << 1) ^ 0x07) : (crc << 1);
-        }
-    }
-    return crc;
+struct OcvPoint {
+    uint16_t vMv;
+    uint8_t  pct;
+};
+
+// 4.2V Li-ion OCV-SOC table (open-circuit voltage vs. state of charge).
+// Ascending in voltage; tick() does linear interpolation between points.
+constexpr OcvPoint kOcvTable[] = {
+    { 3000,   0 },
+    { 3300,   1 },
+    { 3400,   5 },
+    { 3500,  10 },
+    { 3560,  20 },
+    { 3620,  30 },
+    { 3680,  40 },
+    { 3740,  50 },
+    { 3800,  60 },
+    { 3900,  70 },
+    { 4000,  80 },
+    { 4100,  90 },
+    { 4200, 100 },
+};
+
+constexpr uint8_t  kI2cAddr        = cfg::battery::I2C_ADDR;
+constexpr uint32_t kVoltageFsMv    = 70800;   // LTC2944 voltage full-scale
+constexpr uint32_t kCapacityMAs    = (uint32_t)cfg::battery::CAPACITY_MAH * 3600;  // 1 mAh = 3600 mA·ms
+
+uint16_t codeToVoltageMv(uint16_t code) {
+    return (uint16_t)((uint64_t)code * kVoltageFsMv / 65535);
 }
 
-constexpr uint8_t I2C_ADDR_8 = cfg::battery::I2C_ADDR;
+int16_t codeToCurrentMa(uint16_t code) {
+    int32_t delta = (int32_t)code - 32767;
+    int64_t iMa = (int64_t)delta * cfg::battery::SENSE_FS_MV * 1000
+                  / 32767 / cfg::battery::R_SENSE_MOHM;
+    return (int16_t)iMa;
+}
+
+int16_t codeToTempCx10(uint16_t code) {
+    // T(K) = 510 * code / 65535 → T(°C)*10 = 5100*code/65535 - 2731
+    return (int16_t)((uint32_t)code * 5100 / 65535) - 2731;
+}
 
 } // namespace
 
@@ -25,93 +55,218 @@ bool BatteryModule::begin() {
     wire_->setClock(100000);
     delay(10);
 
-    bool ok = writeReg(0x15, 0x0001);
-    if (!ok) {
-        log_e("LC709203F power mode write failed");
+    if (!writeReg8(cfg::battery::REG_CONTROL, cfg::battery::CONTROL_SCAN_M1024)) {
+        log_e("LTC2944 control write failed");
         present_ = false;
         return false;
     }
-    delay(50);
-    writeReg(0x0C, 0x0000);
-    delay(10);
-    writeReg(0x06, 0x0B1F);
-    delay(10);
+    delay(20);
 
-    uint16_t rsoc = 0;
-    if (readReg(cfg::battery::REG_RSOC, rsoc)) {
-        lastPercent_ = rsoc & 0xFF;
-        present_ = true;
-        log_i("LC709203F ok, RSOC=%u%%", lastPercent_);
-        return true;
+    uint16_t status = 0;
+    if (!readReg16(cfg::battery::REG_STATUS, status)) {
+        log_e("LTC2944 status read failed");
+        present_ = false;
+        return false;
     }
-    log_e("LC709203F RSOC read failed");
-    present_ = false;
-    return false;
+
+    mutex_ = xSemaphoreCreateMutex();
+    if (!mutex_) {
+        log_e("Battery mutex alloc failed");
+        present_ = false;
+        return false;
+    }
+
+    uint16_t vCode = 0, iCode = 0, tCode = 0;
+    readReg16(cfg::battery::REG_VOLT_HI, vCode);
+    readReg16(cfg::battery::REG_CURR_HI, iCode);
+    readReg16(cfg::battery::REG_TEMP_HI, tCode);
+
+    voltageMv_ = codeToVoltageMv(vCode);
+    currentMa_ = codeToCurrentMa(iCode);
+    tempCx10_  = codeToTempCx10(tCode);
+
+    uint8_t initPct = ocvToPercent(voltageMv_);
+    percent_    = initPct;
+    coulombMAs_ = (int32_t)((uint64_t)initPct * kCapacityMAs / 100);
+    lastTickMs_ = millis();
+    staticSinceMs_ = 0;
+
+    if (currentMa_ > cfg::battery::CURRENT_IDLE_THRESH_MA) {
+        powerState_ = PowerState::Charging;
+    } else if (currentMa_ >= -cfg::battery::CURRENT_IDLE_THRESH_MA &&
+               voltageMv_ >= cfg::battery::V_FULL_THRESH_MV) {
+        powerState_ = PowerState::Full;
+    } else {
+        powerState_ = PowerState::Discharging;
+    }
+
+    present_ = true;
+    log_i("LTC2944 ok, V=%u mV, I=%d mA, T=%d.%dC, init=%u%%",
+          voltageMv_, currentMa_,
+          tempCx10_ / 10, (tempCx10_ < 0 ? -(tempCx10_ % 10) : (tempCx10_ % 10)),
+          percent_);
+
+    BaseType_t ok = xTaskCreatePinnedToCore(
+        &BatteryModule::taskTrampoline,
+        "batteryTask",
+        cfg::task::BATTERY_STACK,
+        this,
+        cfg::task::BATTERY_PRIO,
+        nullptr,
+        cfg::task::APP_CORE);
+    if (ok != pdPASS) {
+        log_e("Battery task create failed");
+        present_ = false;
+        return false;
+    }
+    return true;
+}
+
+void BatteryModule::taskTrampoline(void* arg) {
+    BatteryModule* self = static_cast<BatteryModule*>(arg);
+    TickType_t last = xTaskGetTickCount();
+    const TickType_t period = pdMS_TO_TICKS(1000U / cfg::battery::SAMPLE_HZ);
+    while (true) {
+        self->tick();
+        if (self->notifyCb_) {
+            self->notifyCb_(self->percent_, self->powerState_, self->notifyCtx_);
+        }
+        vTaskDelayUntil(&last, period);
+    }
+}
+
+void BatteryModule::tick() {
+    uint16_t vCode = 0, iCode = 0, tCode = 0;
+    bool vOk = readReg16(cfg::battery::REG_VOLT_HI, vCode);
+    bool iOk = readReg16(cfg::battery::REG_CURR_HI, iCode);
+    bool tOk = readReg16(cfg::battery::REG_TEMP_HI, tCode);
+    if (!vOk || !iOk) return;  // keep last cache on transient I2C failure
+
+    const uint16_t vMv   = codeToVoltageMv(vCode);
+    const int16_t  iMa   = codeToCurrentMa(iCode);
+    const int16_t  tCx10 = tOk ? codeToTempCx10(tCode) : tempCx10_;
+
+    const uint32_t now = millis();
+    const uint32_t dt  = now - lastTickMs_;
+    lastTickMs_ = now;
+
+    coulombMAs_ += (int32_t)iMa * (int32_t)dt;
+
+    if (iMa <  cfg::battery::CURRENT_IDLE_THRESH_MA &&
+        iMa > -cfg::battery::CURRENT_IDLE_THRESH_MA) {
+        staticSinceMs_ += dt;
+    } else {
+        staticSinceMs_ = 0;
+    }
+
+    const int32_t cap = (int32_t)kCapacityMAs;
+    if (vMv >= cfg::battery::V_FULL_THRESH_MV && iMa > 0) {
+        coulombMAs_ = cap;                                 // charging near full → saturate
+    } else if (vMv < cfg::battery::V_EMPTY_MV) {
+        coulombMAs_ = 0;                                   // deep discharge clamp
+    } else if (staticSinceMs_ >= cfg::battery::STATIC_CALIB_MS) {
+        uint8_t vPct = ocvToPercent(vMv);                  // rested → OCV reliable
+        coulombMAs_ = (int32_t)((uint64_t)vPct * cap / 100);
+    }
+    if (coulombMAs_ > cap) coulombMAs_ = cap;
+    if (coulombMAs_ < 0)   coulombMAs_ = 0;
+
+    const uint8_t pct = (uint8_t)((uint32_t)coulombMAs_ * 100 / (uint32_t)cap);
+
+    PowerState ps;
+    if (iMa >  cfg::battery::CURRENT_IDLE_THRESH_MA) {
+        ps = PowerState::Charging;
+    } else if (iMa < -cfg::battery::CURRENT_IDLE_THRESH_MA) {
+        ps = PowerState::Discharging;
+    } else if (vMv >= cfg::battery::V_FULL_THRESH_MV) {
+        ps = PowerState::Full;
+    } else {
+        ps = PowerState::Discharging;  // idle, not full → treat as slow discharge
+    }
+
+    if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
+        percent_    = pct;
+        voltageMv_  = vMv;
+        currentMa_  = iMa;
+        tempCx10_   = tCx10;
+        powerState_ = ps;
+        xSemaphoreGive(mutex_);
+    }
 }
 
 uint8_t BatteryModule::getPercent() {
-    if (!present_) return lastPercent_;
-    uint16_t rsoc = 0;
-    for (int attempt = 0; attempt < 3; attempt++) {
-        if (readReg(cfg::battery::REG_RSOC, rsoc)) {
-            lastPercent_ = rsoc & 0xFF;
-            return lastPercent_;
-        }
-        delay(5);
+    if (!present_ || !mutex_) return percent_;
+    if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
+        uint8_t p = percent_;
+        xSemaphoreGive(mutex_);
+        return p;
     }
-    return lastPercent_;
+    return percent_;
 }
 
 uint16_t BatteryModule::getVoltageMv() {
-    if (!present_) return 0;
-    uint16_t v = 0;
-    if (readReg(cfg::battery::REG_VOLTAGE, v)) {
+    if (!present_ || !mutex_) return voltageMv_;
+    if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
+        uint16_t v = voltageMv_;
+        xSemaphoreGive(mutex_);
         return v;
     }
-    return 0;
+    return voltageMv_;
 }
 
-bool BatteryModule::writeReg(uint8_t reg, uint16_t val) {
-    uint8_t buf[4] = {
-        static_cast<uint8_t>(I2C_ADDR_8 << 1),
-        reg,
-        static_cast<uint8_t>(val & 0xFF),
-        static_cast<uint8_t>((val >> 8) & 0xFF),
-    };
-    uint8_t pec = crc8(buf, 4);
-
-    wire_->beginTransmission(I2C_ADDR_8);
-    wire_->write(reg);
-    wire_->write(buf[2]);
-    wire_->write(buf[3]);
-    wire_->write(pec);
-    return wire_->endTransmission() == 0;
+int16_t BatteryModule::getCurrentMa() {
+    if (!present_ || !mutex_) return currentMa_;
+    if (xSemaphoreTake(mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
+        int16_t i = currentMa_;
+        xSemaphoreGive(mutex_);
+        return i;
+    }
+    return currentMa_;
 }
 
-bool BatteryModule::readReg(uint8_t reg, uint16_t& val) {
-    wire_->beginTransmission(I2C_ADDR_8);
-    wire_->write(reg);
+int16_t BatteryModule::getTemperatureC() {
+    int16_t tCx10 = tempCx10_;
+    if (present_ && mutex_ &&
+        xSemaphoreTake(mutex_, pdMS_TO_TICKS(10)) == pdTRUE) {
+        tCx10 = tempCx10_;
+        xSemaphoreGive(mutex_);
+    }
+    return tCx10 / 10;
+}
+
+uint8_t BatteryModule::ocvToPercent(uint16_t vMv) {
+    if (vMv >= 4200) return 100;
+    if (vMv <= 3000) return 0;
+    constexpr size_t N = sizeof(kOcvTable) / sizeof(kOcvTable[0]);
+    for (size_t i = 1; i < N; i++) {
+        if (vMv < kOcvTable[i].vMv) {
+            const OcvPoint& lo = kOcvTable[i - 1];
+            const OcvPoint& hi = kOcvTable[i];
+            uint32_t num = (uint32_t)(vMv - lo.vMv) * (hi.pct - lo.pct);
+            uint32_t den = hi.vMv - lo.vMv;
+            return lo.pct + (uint8_t)(num / den);
+        }
+    }
+    return 100;
+}
+
+bool BatteryModule::readReg16(uint8_t hiReg, uint16_t& val) {
+    wire_->beginTransmission(kI2cAddr);
+    wire_->write(hiReg);
     if (wire_->endTransmission(false) != 0) return false;
-
-    size_t got = wire_->requestFrom((uint8_t)I2C_ADDR_8, (uint8_t)3);
-    if (got != 3) return false;
-
-    uint8_t lo = wire_->read();
+    size_t got = wire_->requestFrom((uint8_t)kI2cAddr, (uint8_t)2);
+    if (got != 2) return false;
     uint8_t hi = wire_->read();
-    uint8_t pecRecv = wire_->read();
-
-    uint8_t buf[5] = {
-        static_cast<uint8_t>(I2C_ADDR_8 << 1),
-        reg,
-        static_cast<uint8_t>((I2C_ADDR_8 << 1) | 1u),
-        lo,
-        hi,
-    };
-    uint8_t pecCalc = crc8(buf, 5);
-    if (pecCalc != pecRecv) return false;
-
-    val = lo | ((uint16_t)hi << 8);
+    uint8_t lo = wire_->read();
+    val = ((uint16_t)hi << 8) | lo;
     return true;
+}
+
+bool BatteryModule::writeReg8(uint8_t reg, uint8_t val) {
+    wire_->beginTransmission(kI2cAddr);
+    wire_->write(reg);
+    wire_->write(val);
+    return wire_->endTransmission() == 0;
 }
 
 } // namespace modules

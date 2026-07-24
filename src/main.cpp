@@ -39,15 +39,8 @@ static OtaService       g_ota;
 static ui::UiCommon     g_ui;
 static app::AppController g_app;
 
-static void batteryTask(void* arg) {
-    app::AppController* a = static_cast<app::AppController*>(arg);
-    TickType_t last = xTaskGetTickCount();
-    const TickType_t period = pdMS_TO_TICKS(1000U / cfg::battery::SAMPLE_HZ);
-    while (true) {
-        uint8_t pct = a->battery().getPercent();
-        a->ble().setBatteryLevel(pct);
-        vTaskDelayUntil(&last, period);
-    }
+static void onBatteryUpdate(uint8_t pct, modules::PowerState /*state*/, void* ctx) {
+    static_cast<modules::BleModule*>(ctx)->setBatteryLevel(pct);
 }
 
 void setup() {
@@ -72,7 +65,11 @@ void setup() {
     if (!dispOk) log_e("Display init failed");
 
     bool batOk = g_battery.begin();
-    if (!batOk) log_w("Battery gauge init failed");
+    if (batOk) {
+        g_battery.setNotifyCallback(&onBatteryUpdate, &g_ble);
+    } else {
+        log_w("Battery gauge init failed");
+    }
 
     bool bleOk = g_ble.begin();
     if (!bleOk) log_w("BLE init failed");
@@ -105,15 +102,6 @@ void setup() {
 
     g_app.pushPage(new ui::MainPage());
     g_display.armRendering();
-
-    xTaskCreatePinnedToCore(
-        &batteryTask,
-        "batteryTask",
-        cfg::task::BATTERY_STACK,
-        &g_app,
-        cfg::task::BATTERY_PRIO,
-        nullptr,
-        cfg::task::APP_CORE);
 
     g_app.start();
     log_i("=== boot complete ===");
