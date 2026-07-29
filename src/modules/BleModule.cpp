@@ -475,6 +475,13 @@ void BleModule::startWatchdog() {
     }
 }
 
+void BleModule::stopWatchdog() {
+    if (watchdogTask_) {
+        vTaskDelete(watchdogTask_);
+        watchdogTask_ = nullptr;
+    }
+}
+
 void BleModule::watchdogTrampoline(void* arg) {
     static_cast<BleModule*>(arg)->watchdogLoop();
 }

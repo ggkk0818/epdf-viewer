@@ -29,6 +29,13 @@ public:
     void requestRender(RefreshMode mode);
     void armRendering();
 
+    // 关机流程专用：删除 displayTask 并同步局刷清屏到全白。
+    // stopTask() 持 stateLock_ 直到 draw 阶段结束再删除任务，保证不会有
+    // 任何 draw callback 在页面被释放后触发。shutdownClear() 必须在
+    // stopTask() 之后调用 —— displayTask 已不存在，可直接驱动面板。
+    void stopTask();
+    void shutdownClear();
+
     // Register the callback that draws the current page into the GxEPD2
     // buffer. Called on the DisplayModule task with the state lock held.
     void setDrawCallback(DrawCallback cb, void* ctx) {
@@ -64,6 +71,7 @@ private:
     volatile RefreshMode    pendingMode_ = RefreshMode::Partial;
     volatile bool           pending_     = false;
     volatile bool           renderArmed_ = false;
+    volatile bool           stopped_     = false;
 
     bool                    ready_ = false;
 };

@@ -12,6 +12,9 @@ class SdModule {
 public:
     bool begin();
 
+    // Unmount SD。关机流程在 SD 写入排空后调用。
+    void end();
+
     bool listDirs(const String& path, std::vector<String>& outDirs);
     bool listFiles(const String& path, const String& suffix, std::vector<String>& outFiles);
 

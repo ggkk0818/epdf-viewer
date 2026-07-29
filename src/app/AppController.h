@@ -66,6 +66,12 @@ public:
     // a physical button press. Returns false only if the queue is saturated.
     bool injectInputEvent(InputEvent e);
 
+    // 触发深度休眠关机流程。仅在 MainPage 收到 PowerDown 事件时调用，
+    // 由 appTask 同步执行：停输入 → 停 BLE 看门狗 → 关 BLE 栈 → 排空
+    // BLE work 队列 → 停 displayTask → 同步局刷清屏 → 卸载 SD → 停采样
+    // 任务 → 武装 ext0 唤醒源 → esp_deep_sleep_start()。永不返回。
+    void requestShutdown();
+
     modules::DisplayModule& display() { return *dm_; }
     modules::BatteryModule& battery() { return *bat_; }
     modules::BleModule&     ble()     { return *ble_; }
@@ -82,6 +88,7 @@ private:
     void run();
     void drawTopPage();
     void navigateToDocView(const NavigationRequest& req);
+    void performShutdown_();
 
     modules::DisplayModule* dm_    = nullptr;
     modules::InputModule*   in_    = nullptr;

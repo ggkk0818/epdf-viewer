@@ -24,6 +24,9 @@ public:
     PowerState getPowerState() const { return powerState_; }
     bool isPresent() const { return present_; }
 
+    // 删除采样任务。供关机流程调用。
+    void stop();
+
     void setNotifyCallback(BatteryNotifyCb cb, void* ctx) {
         notifyCb_ = cb;
         notifyCtx_ = ctx;
@@ -39,6 +42,7 @@ private:
     TwoWire* wire_ = &Wire;
     bool present_ = false;
     SemaphoreHandle_t mutex_ = nullptr;
+    TaskHandle_t task_ = nullptr;
 
     // Cached latest readings (written by task under mutex_, read by getters).
     uint8_t    percent_     = 0;

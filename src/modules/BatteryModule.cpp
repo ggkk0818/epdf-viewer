@@ -125,7 +125,7 @@ bool BatteryModule::begin() {
         cfg::task::BATTERY_STACK,
         this,
         cfg::task::BATTERY_PRIO,
-        nullptr,
+        &task_,
         cfg::task::APP_CORE);
     if (ok != pdPASS) {
         log_e("Battery task create failed");
@@ -133,6 +133,13 @@ bool BatteryModule::begin() {
         return false;
     }
     return true;
+}
+
+void BatteryModule::stop() {
+    if (task_) {
+        vTaskDelete(task_);
+        task_ = nullptr;
+    }
 }
 
 void BatteryModule::taskTrampoline(void* arg) {

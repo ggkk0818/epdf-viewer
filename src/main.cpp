@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <esp_sleep.h>
 #include "config/Config.h"
 #include "modules/SdModule.h"
 #include "modules/DisplayModule.h"
@@ -43,10 +44,58 @@ static void onBatteryUpdate(uint8_t pct, modules::PowerState /*state*/, void* ct
     static_cast<modules::BleModule*>(ctx)->setBatteryLevel(pct);
 }
 
+// 深度休眠唤醒闸门。在 setup() 最早执行 —— 在任何重初始化之前。
+// 唤醒等价于 reset，所以"按键持续时长"只能从唤醒瞬间开始测。
+//   - 冷启动 / 非 EXT0 唤醒：武装 ext0 唤醒源后放行正常初始化。
+//   - EXT0 唤醒：测 Boot 持续时长，<1s 则重入休眠，≥1s 等释放后正常初始化。
+static void handleWakeGate() {
+    pinMode(cfg::pin::BUTTON_BOOT, INPUT_PULLUP);
+
+    const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+    if (cause != ESP_SLEEP_WAKEUP_EXT0) {
+        // 冷启动。武装唤醒源（与唤醒后路径对等），然后正常初始化。
+        esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+        return;
+    }
+
+    // Boot 唤醒。先空过 50ms 避开 RTC→PLL 切换瞬间的 GPIO 毛刺。
+    const uint32_t start = millis();
+    while (millis() - start < cfg::sleep::WAKE_SETTLE_GUARD_MS) {
+        vTaskDelay(pdMS_TO_TICKS(cfg::sleep::WAKE_RELEASE_POLL_MS));
+    }
+
+    // 测量 Boot 持续按下时长。释放或达到 WAKE_HOLD_MIN_MS 都会退出。
+    uint32_t heldMs = cfg::sleep::WAKE_SETTLE_GUARD_MS;
+    while (digitalRead(cfg::pin::BUTTON_BOOT) == LOW &&
+           heldMs < cfg::sleep::WAKE_HOLD_MIN_MS) {
+        vTaskDelay(pdMS_TO_TICKS(cfg::sleep::WAKE_RELEASE_POLL_MS));
+        heldMs = millis() - start;
+    }
+
+    if (heldMs < cfg::sleep::WAKE_HOLD_MIN_MS) {
+        // 按合时间不够 —— 用户只是短按，重入深度休眠。
+        log_i("wake: boot released early (held=%u ms), re-sleeping", (unsigned)heldMs);
+        esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+        esp_deep_sleep_start();  // 不返回
+    }
+
+    log_i("wake: boot held long enough (held=%u ms), waiting for release",
+          (unsigned)heldMs);
+    // 等用户释放，避免 InputModule 首次轮询看到"仍按下"导致释放时发 Enter。
+    while (digitalRead(cfg::pin::BUTTON_BOOT) == LOW) {
+        vTaskDelay(pdMS_TO_TICKS(cfg::sleep::WAKE_RELEASE_POLL_MS));
+    }
+    // 重新武装唤醒源（与冷启动路径对等）。
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+}
+
 void setup() {
     Serial.begin(115200);
     Serial.setDebugOutput(true); // 把 ESP_LOGx/log_x 输出到 Serial
     log_i("=== EPDF Viewer boot ===");
+
+    // 在任何重初始化之前判断深度休眠唤醒状态。
+    handleWakeGate();
 
     if (!psramFound()) {
         log_w("PSRAM not found");

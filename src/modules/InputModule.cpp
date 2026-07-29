@@ -14,9 +14,9 @@ constexpr uint8_t IDX_BTN2 = 2;
 } // namespace
 
 bool InputModule::begin() {
-    btn_[IDX_BOOT] = { cfg::pin::BUTTON_BOOT,   false, false, 0, 0, false };
-    btn_[IDX_BTN1] = { cfg::pin::BUTTON_CUSTOM, false, false, 0, 0, false };
-    btn_[IDX_BTN2] = { cfg::pin::BUTTON_CUSTOM2,false, false, 0, 0, false };
+    btn_[IDX_BOOT] = { cfg::pin::BUTTON_BOOT,   false, false, 0, 0, false, false };
+    btn_[IDX_BTN1] = { cfg::pin::BUTTON_CUSTOM, false, false, 0, 0, false, false };
+    btn_[IDX_BTN2] = { cfg::pin::BUTTON_CUSTOM2,false, false, 0, 0, false, false };
 
     pinMode(cfg::pin::BUTTON_BOOT,    INPUT_PULLUP);
     pinMode(cfg::pin::BUTTON_CUSTOM,  INPUT_PULLUP);
@@ -34,7 +34,7 @@ bool InputModule::begin() {
         cfg::task::INPUT_STACK,
         this,
         cfg::task::INPUT_PRIO,
-        nullptr,
+        &task_,
         cfg::task::APP_CORE);
     if (ok != pdPASS) {
         log_e("inputTask create failed");
@@ -43,6 +43,13 @@ bool InputModule::begin() {
 
     log_i("InputModule ready");
     return true;
+}
+
+void InputModule::stop() {
+    if (task_) {
+        vTaskDelete(task_);
+        task_ = nullptr;
+    }
 }
 
 void InputModule::taskTrampoline(void* arg) {
@@ -70,6 +77,7 @@ void InputModule::poll() {
             if (raw) {
                 b.pressedAtMs = now;
                 b.longPressFired = false;
+                b.powerDownFired = false;
             }
             onButtonEdge(i, raw);
         }
@@ -78,6 +86,15 @@ void InputModule::poll() {
             (now - b.pressedAtMs) >= cfg::input::LONG_PRESS_MS) {
             b.longPressFired = true;
             emit(InputEvent::Back);
+        }
+
+        // 3s 长按触发 PowerDown。600ms Back 已经发过（longPressFired=true），
+        // 这里仅额外追加一个 PowerDown 事件，由 MainPage 处理进入深度休眠。
+        // powerDownFired 守护避免按住期间重复 emit。
+        if (i == IDX_BOOT && b.debouncedPressed && !b.powerDownFired &&
+            (now - b.pressedAtMs) >= cfg::input::POWER_DOWN_MS) {
+            b.powerDownFired = true;
+            emit(InputEvent::PowerDown);
         }
     }
 }

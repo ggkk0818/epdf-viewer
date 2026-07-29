@@ -34,6 +34,10 @@ public:
     void setEnabled(bool on);
     bool isEnabled() const { return enabled_; }
 
+    // 删除 BLE 自动禁用看门狗任务。关机流程必须在 setEnabled(false) 之前
+    // 调用本方法，否则看门狗可能在拆栈过程中触发 onAutoDisabled → requestRender。
+    void stopWatchdog();
+
     void setBatteryLevel(uint8_t percent);
 
     // EPDF service accessors — used by dispatcher/transport to send notifies.

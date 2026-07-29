@@ -90,10 +90,12 @@ void DisplayModule::displayTaskTrampoline(void* arg) {
 
 void DisplayModule::displayLoop() {
     while (true) {
+        if (stopped_) return;
         // Block until at least one render request arrives. The take resets
         // the notification count to zero, coalescing any number of wakes
         // into a single render pass.
         ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        if (stopped_) return;
 
         while (true) {
             // Snapshot the coalesced mode and clear pending under a brief
@@ -159,6 +161,36 @@ void DisplayModule::displayLoop() {
             if (!more) break;
         }
     }
+}
+
+void DisplayModule::stopTask() {
+    // 持 stateLock_ 直到任何进行中的 draw 阶段结束。这样删除任务时
+    // 不会留下半完成的 draw，也不会有正在执行 draw callback 的任务。
+    if (stateLock_) xSemaphoreTake(stateLock_, portMAX_DELAY);
+    stopped_ = true;
+    if (task_) {
+        vTaskDelete(task_);
+        task_ = nullptr;
+    }
+    if (stateLock_) xSemaphoreGive(stateLock_);
+}
+
+void DisplayModule::shutdownClear() {
+    if (!display_) return;
+    // 前置条件：调用方已 stopTask()，无并发任务争用面板。
+    display_->setFullWindow();
+    display_->fillScreen(GxEPD_WHITE);
+    const uint32_t start = millis();
+    display_->displayWindow(0, 0, cfg::display::WIDTH, cfg::display::HEIGHT);
+    // 按 partial_refresh_time 补足，让 SSD1681 完成波形驱动
+    // （与 displayLoop 同样的 floor 逻辑，避免 BUSY 提前返回）。
+    const int32_t remaining =
+        (int32_t)display_->epd2.partial_refresh_time -
+        (int32_t)(millis() - start);
+    if (remaining > 0) {
+        vTaskDelay(pdMS_TO_TICKS(remaining));
+    }
+    display_->powerOff();
 }
 
 } // namespace modules

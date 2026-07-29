@@ -4,6 +4,9 @@
 #include "../ui/DocListPage.h"
 #include "../ui/DocViewPage.h"
 
+#include <esp_sleep.h>
+#include <esp32-hal-gpio.h>
+
 namespace app {
 
 namespace {
@@ -242,6 +245,54 @@ void AppController::requestRender() {
     portEXIT_CRITICAL(&refreshScoreLock_);
 
     dm_->requestRender(mode);
+}
+
+void AppController::requestShutdown() {
+    performShutdown_();
+    // 不应到达此处。防御性兜底。
+    while (true) {
+        vTaskDelay(pdMS_TO_TICKS(1000));
+    }
+}
+
+void AppController::performShutdown_() {
+    log_i("shutdown: starting");
+
+    // 0. 先停 InputModule —— 用户仍按住 Boot，停掉后避免释放时塞幽灵 Enter。
+    if (in_) in_->stop();
+
+    // 1. 停 BLE 看门狗（必须在 setEnabled(false) 之前，否则看门狗可能在
+    //    拆栈过程中触发 onAutoDisabled → requestRender，留下 stale pending）。
+    if (ble_) ble_->stopWatchdog();
+
+    // 2. 完整 BLE 栈拆除（断开连接 + BLEDevice::deinit）。
+    if (ble_) ble_->setEnabled(false);
+
+    // 3. 给 BLE work / OTA 任务一个调度窗口，让它们排空任何已在队列里
+    //    的 SD 写入，避免下一步 SD.end() 时正在写。
+    vTaskDelay(pdMS_TO_TICKS(cfg::sleep::SHUTDOWN_INPUT_DRAIN_MS));
+
+    // 4. 停 displayTask —— 持 stateLock_ 直到任何 draw 阶段结束再删除。
+    if (dm_) {
+        dm_->stopTask();
+        // 5. 同步局刷白屏 —— displayTask 已不存在，可直接驱动面板。
+        dm_->shutdownClear();
+    }
+
+    // 6. 卸载 SD 卡。
+    if (sd_) sd_->end();
+
+    // 7. 停电池采样任务。其他任务（BleCmdDispatcher / OtaService）在 BLE
+    //    deinit 后无新工作，会一直阻塞在队列上，由 deep sleep 隐式回收。
+    if (bat_) bat_->stop();
+
+    // 8. 武装 Boot(GPIO 0) 作为 ext0 唤醒源，低电平触发（按键按下）。
+    //    冷启动路径也在 main.cpp 里武装了一次，重复武装无副作用。
+    esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
+
+    log_i("shutdown: entering deep sleep");
+    // 9. 进入深度休眠 —— 永不返回。
+    esp_deep_sleep_start();
 }
 
 } // namespace app

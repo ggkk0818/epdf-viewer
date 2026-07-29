@@ -37,6 +37,13 @@ bool SdModule::begin() {
     return true;
 }
 
+void SdModule::end() {
+    if (!mounted_) return;
+    SD.end();
+    mounted_ = false;
+    invalidateStatsCache();
+}
+
 bool SdModule::listDirs(const String& path, std::vector<String>& outDirs) {
     if (!mounted_) return false;
     File root = SD.open(path);

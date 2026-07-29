@@ -25,6 +25,7 @@ void MainPage::onEvent(::app::InputEvent e, ::app::AppController& app) {
     bool changed = false;
     uint8_t selectedIdx = 0;
     bool openPage = false;
+    bool doShutdown = false;
 
     app.mutateUiState([&] {
         switch (e) {
@@ -42,10 +43,19 @@ void MainPage::onEvent(::app::InputEvent e, ::app::AppController& app) {
                 break;
             case ::app::InputEvent::Back:
                 break;
+            case ::app::InputEvent::PowerDown:
+                // 标记后在锁外执行 —— requestShutdown 会调 esp_deep_sleep_start，
+                // 不能在持有 stateLock_ 时进入休眠。
+                doShutdown = true;
+                break;
             default: break;
         }
     });
 
+    if (doShutdown) {
+        app.requestShutdown();  // 永不返回
+        return;
+    }
     if (openPage) {
         switch (selectedIdx) {
             case 0: app.pushPage(new DocListPage());    return;

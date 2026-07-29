@@ -99,9 +99,23 @@ namespace input {
 constexpr uint32_t POLL_HZ        = 50;
 constexpr uint32_t DEBOUNCE_MS    = 20;
 constexpr uint32_t LONG_PRESS_MS  = 600;
+constexpr uint32_t POWER_DOWN_MS  = 3000;  // 长按 Boot 3s 触发深度休眠
 constexpr uint32_t QUEUE_LEN      = 16;
 
 } // namespace input
+
+namespace sleep {
+
+// 唤醒后 Boot 需要持续按住的最短时间，达不到则重入深度休眠。
+constexpr uint32_t WAKE_HOLD_MIN_MS        = 1000;
+// 唤醒后轮询 Boot 引脚状态的粒度。
+constexpr uint32_t WAKE_RELEASE_POLL_MS    = 10;
+// 唤醒后忽略初始 GPIO 读数的时间窗，避开 RTC→PLL 切换瞬间的毛刺。
+constexpr uint32_t WAKE_SETTLE_GUARD_MS    = 50;
+// 关机流程中等待 BLE work/OTA 任务排空队列的时间窗。
+constexpr uint32_t SHUTDOWN_INPUT_DRAIN_MS = 100;
+
+} // namespace sleep
 
 namespace task {
 

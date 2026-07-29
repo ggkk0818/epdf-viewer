@@ -10,6 +10,7 @@ enum class InputEvent : uint8_t {
     Back,
     UpLeft,
     DownRight,
+    PowerDown,  // 长按 Boot 3s，只允许本地物理触发；不可由 BLE 注入
 };
 
 inline const char* eventToStr(InputEvent e) {
@@ -18,6 +19,7 @@ inline const char* eventToStr(InputEvent e) {
         case InputEvent::Back:      return "Back";
         case InputEvent::UpLeft:    return "UpLeft";
         case InputEvent::DownRight: return "DownRight";
+        case InputEvent::PowerDown: return "PowerDown";
         default:                    return "None";
     }
 }
