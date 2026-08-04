@@ -101,6 +101,9 @@ constexpr uint32_t DEBOUNCE_MS    = 20;
 constexpr uint32_t LONG_PRESS_MS  = 600;
 constexpr uint32_t POWER_DOWN_MS  = 3000;  // 长按 Boot 3s 触发深度休眠
 constexpr uint32_t QUEUE_LEN      = 16;
+// 开机静默期:从 handleWakeGate 返回起屏蔽所有按键事件,避免开机按 Boot 的余响误触发
+// Enter/Back/PowerDown。静默期结束后 poll() 自然把"仍按住"识别为新一次按压。
+constexpr uint32_t BOOT_SILENT_MS = 5000;
 
 } // namespace input
 

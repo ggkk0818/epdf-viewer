@@ -79,13 +79,10 @@ static void handleWakeGate() {
         esp_deep_sleep_start();  // 不返回
     }
 
-    log_i("wake: boot held long enough (held=%u ms), waiting for release",
+    log_i("wake: boot held long enough (held=%u ms), proceeding without waiting for release",
           (unsigned)heldMs);
-    // 等用户释放，避免 InputModule 首次轮询看到"仍按下"导致释放时发 Enter。
-    while (digitalRead(cfg::pin::BUTTON_BOOT) == LOW) {
-        vTaskDelay(pdMS_TO_TICKS(cfg::sleep::WAKE_RELEASE_POLL_MS));
-    }
-    // 重新武装唤醒源（与冷启动路径对等）。
+    // 不等待释放:让 setup() 立即继续初始化,避免用户必须松手才开机。
+    // Boot 仍按住期间产生的误触事件由 InputModule 的开机静默期(BOOT_SILENT_MS)屏蔽。
     esp_sleep_enable_ext0_wakeup(GPIO_NUM_0, 0);
 }
 
@@ -96,6 +93,9 @@ void setup() {
 
     // 在任何重初始化之前判断深度休眠唤醒状态。
     handleWakeGate();
+    // 开机静默期:从现在起 BOOT_SILENT_MS 内屏蔽按键事件,避免 Boot 余响误触发。
+    // 必须在 g_input.begin()(即 inputTask 启动)之前注入,保证无竞态。
+    g_input.setQuietUntil(millis() + cfg::input::BOOT_SILENT_MS);
 
     if (!psramFound()) {
         log_w("PSRAM not found");

@@ -14,6 +14,11 @@ public:
     // 删除 inputTask。供关机流程调用，避免后续轮询把幽灵事件塞进队列。
     void stop();
 
+    // 设置静默截止时刻(millis):poll() 在此之前直接 return,不发任何事件。
+    // 用于开机静默期;将来也可复用于勿扰/OTA 等场景。
+    // 必须在 begin() 之前调用,避免与 inputTask 竞态。
+    void setQuietUntil(uint32_t quietUntilMs) { quietUntilMs_ = quietUntilMs; }
+
     QueueHandle_t eventQueue() const { return queue_; }
 
 private:
@@ -34,6 +39,7 @@ private:
     TaskHandle_t  task_  = nullptr;
     uint32_t overwrittenCount_ = 0;
     uint32_t droppedCount_ = 0;
+    uint32_t quietUntilMs_ = 0;
 
     void emit(app::InputEvent e);
     void onButtonEdge(uint8_t idx, bool pressed);

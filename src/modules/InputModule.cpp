@@ -64,6 +64,11 @@ void InputModule::taskTrampoline(void* arg) {
 
 void InputModule::poll() {
     const uint32_t now = millis();
+    if (now < quietUntilMs_) {
+        // 开机静默期:丢弃所有按键边沿。结束后若按键仍按住,poll 会从干净状态把它
+        // 当作一次新按下(debounce 从 0 开始),等价于"5s 点重置按键计时"。
+        return;
+    }
 
     for (uint8_t i = 0; i < 3; i++) {
         ButtonState& b = btn_[i];
