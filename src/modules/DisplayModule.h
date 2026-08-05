@@ -53,6 +53,10 @@ public:
     U8G2_FOR_ADAFRUIT_GFX& fonts()  { return u8g2_; }
     bool isReady() const             { return ready_; }
 
+    // 当前是否处于 draw + e-ink refresh 阶段。供浅睡眠决策避免在面板刷新
+    // 中途暂停 CPU（GxEPD2 的 display() 依赖 BUSY 轮询和 SPI 时序）。
+    bool isBusy() const              { return refreshing_; }
+
 private:
     static void displayTaskTrampoline(void* arg);
     void displayLoop();
@@ -72,6 +76,7 @@ private:
     volatile bool           pending_     = false;
     volatile bool           renderArmed_ = false;
     volatile bool           stopped_     = false;
+    volatile bool           refreshing_  = false;  // draw+refresh 阶段标志，供 isBusy() 读取
 
     bool                    ready_ = false;
 };

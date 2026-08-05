@@ -118,6 +118,10 @@ constexpr uint32_t WAKE_SETTLE_GUARD_MS    = 50;
 // 关机流程中等待 BLE work/OTA 任务排空队列的时间窗。
 constexpr uint32_t SHUTDOWN_INPUT_DRAIN_MS = 100;
 
+// 浅睡眠触发阈值：距离上一次 InputEvent 队列事件超过此时长，且其他空闲
+// 条件均满足时，允许 appTask 进入 light sleep。
+constexpr uint32_t LIGHT_SLEEP_IDLE_MS     = 30000;
+
 } // namespace sleep
 
 namespace task {

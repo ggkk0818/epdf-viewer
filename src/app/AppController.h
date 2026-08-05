@@ -89,6 +89,7 @@ private:
     void drawTopPage();
     void navigateToDocView(const NavigationRequest& req);
     void performShutdown_();
+    void tryLightSleep_();
 
     modules::DisplayModule* dm_    = nullptr;
     modules::InputModule*   in_    = nullptr;

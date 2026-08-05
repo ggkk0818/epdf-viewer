@@ -21,6 +21,11 @@ public:
 
     QueueHandle_t eventQueue() const { return queue_; }
 
+    // 距上一次 emit() 的毫秒数。供浅睡眠决策判断"30s 无按键事件"使用。
+    // lastEventAtMs_ 初始为 0，开机后 millis() 直接相减即得到自启动以来的时长，
+    // 等价于"开机后从未按过键"的语义。
+    uint32_t msSinceLastEvent() const { return millis() - lastEventAtMs_; }
+
 private:
     static void taskTrampoline(void* arg);
 
@@ -40,6 +45,7 @@ private:
     uint32_t overwrittenCount_ = 0;
     uint32_t droppedCount_ = 0;
     uint32_t quietUntilMs_ = 0;
+    uint32_t lastEventAtMs_ = 0;
 
     void emit(app::InputEvent e);
     void onButtonEdge(uint8_t idx, bool pressed);

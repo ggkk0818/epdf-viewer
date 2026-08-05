@@ -27,6 +27,15 @@ public:
     // 删除采样任务。供关机流程调用。
     void stop();
 
+    // 当前是否处于 tick() 执行窗口内。供浅睡眠决策避免在 I2C transaction
+    // 中途暂停 CPU。
+    bool isTicking() const { return ticking_; }
+
+    // 距离下一次 tick() 的预估毫秒数。基于 lastTickMs_（上次 tick 的 millis）
+    // 和 1Hz 任务周期推算，对齐浅睡眠定时器到下一轮电池采样。任务未启动时
+    // 返回完整周期 1000ms。
+    uint32_t msToNextTick() const;
+
     void setNotifyCallback(BatteryNotifyCb cb, void* ctx) {
         notifyCb_ = cb;
         notifyCtx_ = ctx;
@@ -56,6 +65,7 @@ private:
     uint32_t lastTickMs_    = 0;
     uint32_t staticSinceMs_ = 0;
     uint16_t lastACR_       = 0x7FFF;   // LTC2944 accumulated-charge baseline (chip default)
+    volatile bool ticking_  = false;   // 1Hz tick() 执行窗口标志，供浅睡眠决策读取
 
     // Upper-layer notify callback.
     BatteryNotifyCb notifyCb_  = nullptr;

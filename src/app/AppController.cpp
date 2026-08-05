@@ -6,12 +6,23 @@
 
 #include <esp_sleep.h>
 #include <esp32-hal-gpio.h>
+#include <driver/gpio.h>
 
 namespace app {
 
 namespace {
 constexpr UBaseType_t NAV_QUEUE_LEN = 4;
 constexpr TickType_t APP_POLL_TICKS = pdMS_TO_TICKS(100);
+
+// 浅睡眠 GPIO 唤醒源：3 个按键，按下=低电平。
+// GPIO 0 是 RTC 引脚，41/42 是普通 GPIO —— light sleep 下统一用 gpio_wakeup_enable
+// 武装（deep sleep 不支持 41/42，但浅睡路径不会在 deep sleep 流程里触发）。
+constexpr gpio_num_t kWakePins[] = {
+    GPIO_NUM_0,
+    GPIO_NUM_41,
+    GPIO_NUM_42,
+};
+constexpr size_t kWakePinCount = sizeof(kWakePins) / sizeof(kWakePins[0]);
 } // namespace
 
 void AppController::begin(modules::DisplayModule* dm,
@@ -92,6 +103,8 @@ void AppController::run() {
         }
 
         if (xQueueReceive(in_->eventQueue(), &e, APP_POLL_TICKS) != pdPASS) {
+            // poll 超时，无按键事件。评估是否可进入浅睡眠。
+            tryLightSleep_();
             continue;
         }
         log_i("event: %s", eventToStr(e));
@@ -293,6 +306,50 @@ void AppController::performShutdown_() {
     log_i("shutdown: entering deep sleep");
     // 9. 进入深度休眠 —— 永不返回。
     esp_deep_sleep_start();
+}
+
+void AppController::tryLightSleep_() {
+    // 浅睡眠 4 条件：显示空闲 + 电池任务空闲 + BLE 关闭 + 30s 无按键事件。
+    // 任一不满足直接 return —— 浅睡眠是优化项，不是必需，宁可多检查也别误睡。
+    if (dm_ && dm_->isBusy()) return;
+    if (bat_ && bat_->isTicking()) return;
+    if (ble_ && ble_->isEnabled()) return;
+    if (in_->msSinceLastEvent() < cfg::sleep::LIGHT_SLEEP_IDLE_MS) return;
+
+    // 定时器唤醒时间 = 距离下一轮电池采样的预估毫秒数。clamp 到 [1, 1000]
+    // 规避 msToNextTick 在边界返回 0 导致 timer wakeup 配置异常。
+    uint32_t sleepMs = bat_ ? bat_->msToNextTick() : 1000;
+    if (sleepMs == 0) sleepMs = 1;
+    if (sleepMs > 1000) sleepMs = 1000;
+
+    // 武装定时器唤醒（自动对齐下一轮电量读取任务）。
+    esp_sleep_enable_timer_wakeup((uint64_t)sleepMs * 1000ULL);
+
+    // 武装 GPIO 唤醒（任意按键按下立即唤醒）。
+    // 每次进入 light sleep 前重新武装，规避跨调用状态保留的边界问题。
+    for (size_t i = 0; i < kWakePinCount; i++) {
+        gpio_wakeup_enable(kWakePins[i], GPIO_INTR_LOW_LEVEL);
+    }
+    esp_sleep_enable_gpio_wakeup();
+
+    log_i("light sleep: enter, sleepMs=%u", (unsigned)sleepMs);
+
+    // 进入浅睡眠 —— FreeRTOS tick 与所有任务在此暂停，唤醒后从断点恢复。
+    // 如果是按键唤醒，inputTask 50Hz 自然捕获按合/释放边沿，emit 进队列，
+    // 主循环下一次 poll 收到事件，不会丢失按键。
+    esp_light_sleep_start();
+
+    // 唤醒后清理 GPIO 武装，避免电平触发型 wake source 在已唤醒后重复占用。
+    for (size_t i = 0; i < kWakePinCount; i++) {
+        gpio_wakeup_disable(kWakePins[i]);
+    }
+
+    // 唤醒原因诊断：ESP_SLEEP_WAKEUP_TIMER=定时器到点（未按键），
+    // ESP_SLEEP_WAKEUP_GPIO=按键唤醒，其他=异常。millis 在 light sleep 期间
+    // 不增长，无法用差值测实际睡眠时长；plannedMs 仅供对照。
+    const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
+    log_i("light sleep: woke, cause=%u, plannedMs=%u",
+          (unsigned)cause, (unsigned)sleepMs);
 }
 
 } // namespace app

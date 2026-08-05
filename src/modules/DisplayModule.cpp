@@ -107,6 +107,7 @@ void DisplayModule::displayLoop() {
             pendingMode_ = RefreshMode::Partial;
             portEXIT_CRITICAL(&spinlock_);
 
+            refreshing_ = true;
             // Hold the state lock only during the draw phase — this is the
             // only window where page state is read. The e-ink refresh below
             // runs unlocked, so AppController can keep mutating state and
@@ -152,6 +153,7 @@ void DisplayModule::displayLoop() {
                 vTaskDelay(pdMS_TO_TICKS(remaining));
             }
             display_->powerOff();
+            refreshing_ = false;
             // If another request arrived during this pass, loop and render
             // the latest state. Otherwise wait for the next notification.
             bool more;

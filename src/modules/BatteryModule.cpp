@@ -156,12 +156,16 @@ void BatteryModule::taskTrampoline(void* arg) {
 }
 
 void BatteryModule::tick() {
+    ticking_ = true;
     uint16_t vCode = 0, iCode = 0, tCode = 0, acrCode = 0;
     bool vOk   = readReg16(cfg::battery::REG_VOLT_HI, vCode);
     bool iOk   = readReg16(cfg::battery::REG_CURR_HI, iCode);
     bool tOk   = readReg16(cfg::battery::REG_TEMP_HI, tCode);
     bool acrOk = readReg16(cfg::battery::REG_ACR_HI,  acrCode);
-    if (!vOk || !iOk || !acrOk) return;  // keep last cache on transient I2C failure
+    if (!vOk || !iOk || !acrOk) {
+        ticking_ = false;
+        return;  // keep last cache on transient I2C failure
+    }
 
     const uint16_t vMv   = codeToVoltageMv(vCode);
     const int16_t  iMa   = codeToCurrentMa(iCode);
@@ -221,6 +225,14 @@ void BatteryModule::tick() {
         powerState_ = ps;
         xSemaphoreGive(mutex_);
     }
+    ticking_ = false;
+}
+
+uint32_t BatteryModule::msToNextTick() const {
+    if (!task_) return 1000;
+    const uint32_t periodMs = 1000U / cfg::battery::SAMPLE_HZ;
+    const uint32_t elapsed  = millis() - lastTickMs_;
+    return (elapsed >= periodMs) ? 0 : (periodMs - elapsed);
 }
 
 uint8_t BatteryModule::getPercent() {

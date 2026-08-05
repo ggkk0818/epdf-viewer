@@ -118,6 +118,7 @@ void InputModule::onButtonEdge(uint8_t idx, bool pressed) {
 
 void InputModule::emit(InputEvent e) {
     if (e == InputEvent::None) return;
+    lastEventAtMs_ = millis();
     if (xQueueSendToBack(queue_, &e, 0) == pdPASS) {
         return;
     }
